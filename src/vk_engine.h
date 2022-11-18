@@ -53,9 +53,8 @@ public:
         {
             auto& handler = temporaryCommandPool_.getHandler(0);
             handler.recordOnce(recordCopyBuffers(stagingBuffer, vertexBuffer_));
-            vk::SubmitInfo submitInfo({}, {}, handler.getCurrentCommandBuffer());
-            queueInfo.queue.submit(submitInfo, handler.getCurrentFence().get());
-            handler.wait();
+            handler.submitTo(queueInfo.queue);
+            handler.waitAndReset();
         }
     }
     TrianglePipeline(const TrianglePipeline&) = delete;
@@ -75,8 +74,8 @@ public:
         currentCommandHandler_ = handler;
 
         {
-            vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, handler.getCurrentCommandBuffer(), renderFinishedSemaphore_.get());
-            queue.submit(submitInfo, handler.getCurrentFence().get());
+            vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, {}, renderFinishedSemaphore_.get());
+            handler.submitTo(queue, submitInfo);
         }
         {
             vk::PresentInfoKHR presentInfo(renderFinishedSemaphore_.get(), swapchain.getSwapchain(), imageIndex);

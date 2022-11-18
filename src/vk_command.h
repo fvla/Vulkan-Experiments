@@ -15,7 +15,7 @@ concept VulkanCommandRecorder = requires(T recorder)
 
 /* Command handler that uses ring buffer of command buffers to re-record commands.
    Not safe to use from multiple threads. */
-template <size_t bufferCount, Void V = void>
+template <int64_t bufferCount, Void V = void>
 class VulkanCommandHandler
 {
     static_assert(bufferCount > 1);
@@ -23,6 +23,8 @@ public:
     using CommandBuffersView = std::array<vk::CommandBuffer, bufferCount>; // Command buffers are owned by pool.
 private:
     CommandBuffersView commandBuffers_;
+    std::unique_ptr<std::array<std::atomic_bool, bufferCount>> commandBufferInFlight_ =
+        std::make_unique<std::array<std::atomic_bool, bufferCount>>();
     std::array<VulkanFence<V>, bufferCount> commandBufferFences_;
     static constexpr int64_t terminateFlag_ = -2;
     std::unique_ptr<std::atomic<int64_t>> currentBufferIndex_ = std::make_unique<std::atomic<int64_t>>(-1);
@@ -50,11 +52,10 @@ private:
                 auto discardedIndex = currentDiscardedBufferIndex_->load();
                 if (discardedIndex != -1)
                 {
-                    /* Timeout crudely assumes no command buffer will execute for more than 100 milliseconds.
-                       TODO: Make sure we know exactly when a command buffer is in flight, and avoid this check. */
-                    if (commandBufferFences_[discardedIndex].value().wait(std::chrono::milliseconds(100)) == vk::Result::eSuccess)
-                        commandBufferFences_[discardedIndex].value().reset();
-                    commandBuffers_[discardedIndex]->reset(vk::CommandBufferResetFlagBits::eReleaseResources);
+                    if (commandBufferInFlight_->data()[static_cast<size_t>(index)])
+                        if (commandBufferFences_[static_cast<size_t>(discardedIndex)].wait() == vk::Result::eSuccess)
+                            commandBufferFences_[static_cast<size_t>(discardedIndex)].reset();
+                    commandBuffers_[static_cast<size_t>(discardedIndex)].reset(vk::CommandBufferResetFlagBits::eReleaseResources);
                 }
                 currentDiscardedBufferIndex_->store((discardedIndex + 1) / bufferCount);
                 currentDiscardedBufferIndex_->notify_all();
@@ -86,25 +87,24 @@ private:
         currentBuffer.end();
     }
 public:
-    VulkanCommandHandler(const vk::Device& device, CommandBuffersView commandBuffers)
-        : commandBuffers_(std::move(commandBuffers)), commandBufferFences_(getFences<std::make_index_sequence<bufferCount>>(device))
-    {}
+    VulkanCommandHandler(const vk::Device& device, CommandBuffersView commandBuffers) :
+        commandBuffers_(std::move(commandBuffers)),
+        commandBufferFences_(getFences<std::make_index_sequence<bufferCount>>(device))
+    {
+        resetter_ = std::jthread([this]() { commandResetThread(); });
+    }
     ~VulkanCommandHandler() { currentBufferIndex_->store(terminateFlag_); currentBufferIndex_->notify_all(); }
     VulkanCommandHandler(const VulkanCommandHandler&) = delete;
     VulkanCommandHandler& operator=(const VulkanCommandHandler&) = delete;
     VulkanCommandHandler(VulkanCommandHandler&&) = default;
     VulkanCommandHandler& operator=(VulkanCommandHandler&&) = default;
 
-    /* TODO: Remove this function. Reveals too much state. Replace with .submit(const vk::Queue&) */
-    const vk::CommandBuffer& getCurrentCommandBuffer() const
+    void submitTo(const vk::Queue& queue, vk::SubmitInfo submitInfo = {})
     {
         assert(currentBufferIndex_->load() >= 0);
-        return commandBuffers_[static_cast<uint64_t>(currentBufferIndex_->load())];
-    }
-    const VulkanFence<V>& getCurrentFence() const
-    {
-        assert(currentBufferIndex_->load() >= 0);
-        return commandBufferFences_[static_cast<uint64_t>(currentBufferIndex_->load())];
+        auto index = static_cast<uint64_t>(currentBufferIndex_->load());
+        commandBufferInFlight_->data()[index].store(true);
+        queue.submit(submitInfo.setCommandBuffers(commandBuffers_[index]), commandBufferFences_[index].get());
     }
     template <VulkanCommandRecorder Recorder>
     void record(Recorder recorder)
@@ -140,18 +140,21 @@ public:
     void wait()
     {
         if (auto index = currentBufferIndex_->load(); index >= 0)
-            commandBufferFences_[index].wait();
+            commandBufferFences_[static_cast<size_t>(index)].wait();
     }
     void wait(std::chrono::nanoseconds timeout)
     {
         if (auto index = currentBufferIndex_->load(); index >= 0)
-            commandBufferFences_[index].wait(timeout);
+            commandBufferFences_[static_cast<size_t>(index)].wait(timeout);
     }
     void waitAndReset()
     {
         if (auto index = currentBufferIndex_->load(); index >= 0)
         {
             commandBufferFences_[static_cast<size_t>(index)].wait();
+            /* Order matters; command buffer must be set to be not in flight before fence
+               is reset to avoid deadlock. */
+            commandBufferInFlight_->data()[static_cast<size_t>(index)].store(false);
             commandBufferFences_[static_cast<size_t>(index)].reset();
         }
     }
