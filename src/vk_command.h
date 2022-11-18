@@ -137,16 +137,6 @@ public:
             commandBuffer.endRenderPass();
         });
     }
-    void wait()
-    {
-        if (auto index = currentBufferIndex_->load(); index >= 0)
-            commandBufferFences_[static_cast<size_t>(index)].wait();
-    }
-    void wait(std::chrono::nanoseconds timeout)
-    {
-        if (auto index = currentBufferIndex_->load(); index >= 0)
-            commandBufferFences_[static_cast<size_t>(index)].wait(timeout);
-    }
     void waitAndReset()
     {
         if (auto index = currentBufferIndex_->load(); index >= 0)
@@ -156,6 +146,22 @@ public:
                is reset to avoid deadlock. */
             commandBufferInFlight_->data()[static_cast<size_t>(index)].store(false);
             commandBufferFences_[static_cast<size_t>(index)].reset();
+        }
+    }
+    /* If you record and enqueue several one-time command buffers from the same handler, then
+       this method allows you to wait until all command buffers have finished executing. */
+    void waitAndResetAll()
+    {
+        if (auto index = currentBufferIndex_->load(); index >= 0)
+        {
+            commandBufferFences_[static_cast<size_t>(index)].wait();
+            /* Order matters; command buffer must be set to be not in flight before fence
+               is reset to avoid deadlock. */
+            commandBufferInFlight_->data()[static_cast<size_t>(index)].store(false);
+            commandBufferFences_[static_cast<size_t>(index)].reset();
+
+            for (auto discardedIndex = currentDiscardedBufferIndex_->load(); discardedIndex != index; )
+                currentDiscardedBufferIndex_->wait(discardedIndex);
         }
     }
 };
