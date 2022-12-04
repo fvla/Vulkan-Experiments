@@ -7,7 +7,8 @@ SET(CMAKE_CXX_STANDARD 23)
 if(MSVC)
     # Warning C5246 is useless and complains about std::array initializer lists.
     # Warning C5045 involves Spectre mitigation, which I do not care for.
-    add_compile_options(/Wall /wd5246 /wd5045 /GR-)
+    # Warnings C4710 and C4711 spam too much inlining information for library header files.
+    add_compile_options(/Wall /wd5246 /wd5045 /wd4710 /wd4711 /GR-)
 else(MSVC)
     add_compile_options(-Wall)
 endif(MSVC)
