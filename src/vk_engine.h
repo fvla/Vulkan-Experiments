@@ -35,11 +35,11 @@ class TrianglePipeline
     constexpr static std::array<vk::PipelineStageFlags, 1> waitStages_
         = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
 
-    constexpr static std::array vertexBufferArray_ = {
-        SimpleVertex{{ 0.0f,-0.5f, 0.0f},{1.0f,0.0f,0.0f}},
-        SimpleVertex{{ 0.5f, 0.5f, 0.0f},{0.0f,1.0f,0.0f}},
-        SimpleVertex{{-0.5f, 0.5f, 0.0f},{0.0f,0.0f,1.0f}},
-    };
+    constexpr static std::array vertexBufferArray_ = std::to_array<SimpleVertex>({
+        {{ 0.0f,-0.5f, 0.0f},{1.0f,0.0f,0.0f}},
+        {{ 0.5f, 0.5f, 0.0f},{0.0f,1.0f,0.0f}},
+        {{-0.5f, 0.5f, 0.0f},{0.0f,0.0f,1.0f}},
+    });
 public:
     TrianglePipeline(const vk::PhysicalDevice& physicalDevice, const vk::Device& device,
                      VulkanCommandHandlerPool<bufferCount>& commandHandlerPool, const vk::Pipeline& pipeline,
@@ -120,7 +120,7 @@ class VulkanEngine : RequiresFeature<SDLFeature>
 
     SDL_Window* window_{ nullptr };
 
-    vk::Extent2D windowExtent_{ 1600 , 1200 };
+    vk::Extent2D windowExtent_{ 1280 , 720 };
     std::array<vk::Viewport, 1> viewports_;
     std::array<vk::Rect2D, 1> scissors_;
     const std::vector<vk::ClearValue> clearValues_ = { vk::ClearColorValue(std::array{0.0f, 0.0f, 0.0f, 1.0f}) };
