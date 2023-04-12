@@ -12,11 +12,12 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <gsl/gsl>
 
 #define VK_CHECK(x)                                                     \
     do                                                                  \
     {                                                                   \
-        vk::Result err = x;                                             \
+        const vk::Result err = x;                                       \
         if (err != vk::Result::eSuccess)                                \
         {                                                               \
             std::stringstream ss;                                       \
@@ -64,9 +65,9 @@ static_assert(ArrayOf<std::array<std::string, 1>, std::string>);
 
 /* Credit to https://stackoverflow.com/a/66140851 */
 template <typename T>
-concept IsSpan = std::same_as<T, std::span<typename T::element_type, T::extent>>;
+concept IsSpan = std::same_as<T, gsl::span<typename T::element_type, T::extent>>;
 template <typename T>
-concept Spannable = !IsSpan<T> && requires(T a) { { std::span(a) }; };
+concept Spannable = !IsSpan<T> && requires(T a) { { gsl::span(a) }; };
 static_assert(Spannable<std::array<int, 5>>);
 
 template <typename T, typename... Args>
@@ -77,12 +78,13 @@ constexpr auto array_concat(const std::array<T, Sizes>&... arrays)
 {
     constexpr auto total_length = (Sizes + ...);
     std::array<T, total_length> out{};
-    constexpr std::array<ptrdiff_t, sizeof...(arrays)> sizes{Sizes...};
-    std::array indices = sizes; // Same type and shape
-    std::exclusive_scan(sizes.begin(), sizes.end(), indices.begin(), (size_t)0);
-    std::array begin_iterators = { std::span(arrays).begin()... };
-    for (size_t i = 0; i < sizeof...(arrays); i++)
-        std::copy(begin_iterators[i], begin_iterators[i] + sizes[i], out.begin() + indices[i]);
+    auto outputIterator = out.begin();
+    /* Fold expression to iterate over parameter pack with varying types */
+    (
+        [&]() {
+            std::ranges::copy(arrays, outputIterator);
+            outputIterator += arrays.size();
+        }(), ...);
     return out;
 }
 
@@ -91,7 +93,7 @@ class OptionalReference
 {
     T* pointer_ = nullptr;
 public:
-    constexpr OptionalReference() {}
+    constexpr OptionalReference() noexcept {}
     constexpr OptionalReference(T& reference) : pointer_(&reference) {}
     constexpr OptionalReference& operator=(T& reference) { pointer_ = &reference; return *this; }
     constexpr OptionalReference(const OptionalReference&) = default;

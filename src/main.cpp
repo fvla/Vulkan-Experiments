@@ -3,11 +3,10 @@
 #include <Colors.h>
 #include <iostream>
 
-int main(int argc, char* argv[])
+int main(int argc, const char* argv[])
 {
-    /* Ignore unused arguments */
-    (void)argc;
-    (void)argv;
+    std::ignore = argc;
+    std::ignore = argv;
     try
     {
         VulkanEngine engine;

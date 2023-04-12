@@ -33,7 +33,7 @@ public:
         uint32_t imageCount = surfaceCapabilities.minImageCount + 1;
         if (surfaceCapabilities.maxImageCount != 0)
             imageCount = std::min(imageCount, surfaceCapabilities.maxImageCount);
-        vk::SwapchainCreateInfoKHR swapchainInfo(
+        const vk::SwapchainCreateInfoKHR swapchainInfo(
             {}, surface,
             imageCount, surfaceFormat.format, surfaceFormat.colorSpace,
             imageExtent, 1, vk::ImageUsageFlagBits::eColorAttachment,
@@ -45,14 +45,14 @@ public:
         swapchainImages_ = device_.getSwapchainImagesKHR(*swapchain_);
         for (auto& image : swapchainImages_)
         {
-            auto imageViewInfo = vk::ImageViewCreateInfo({}, image, vk::ImageViewType::e2D, surfaceFormat.format);
-            imageViewInfo.setSubresourceRange(vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+            const auto& imageViewInfo = vk::ImageViewCreateInfo({}, image, vk::ImageViewType::e2D, surfaceFormat.format)
+                .setSubresourceRange(vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
             swapchainImageViews_.push_back(device_.createImageViewUnique(imageViewInfo));
         }
         for (auto& imageView : swapchainImageViews_)
         {
             std::array attachments = { *imageView };
-            vk::FramebufferCreateInfo framebufferInfo({}, renderPass, attachments, imageExtent.width, imageExtent.height, 1u);
+            const vk::FramebufferCreateInfo framebufferInfo({}, renderPass, attachments, imageExtent.width, imageExtent.height, 1u);
             swapchainFramebuffers_.push_back(device_.createFramebufferUnique(framebufferInfo));
         }
     }
@@ -61,13 +61,13 @@ public:
 
     uint32_t acquireNextImage(const vk::Semaphore& semaphore) const
     {
-        auto resultValue = device_.acquireNextImageKHR(*swapchain_, std::numeric_limits<uint64_t>::max(), semaphore);
+        const auto resultValue = device_.acquireNextImageKHR(*swapchain_, std::numeric_limits<uint64_t>::max(), semaphore);
         if (resultValue.result != vk::Result::eSuccess)
             throw FatalError("Swapchain failed to acquire next image");
         return resultValue.value;
     }
-    const vk::SwapchainKHR& getSwapchain() const { return *swapchain_; }
-    const size_t getFramebufferCount() const { return swapchainFramebuffers_.size(); }
-    const size_t size() const { return swapchainFramebuffers_.size(); }
-    const vk::Framebuffer& getFramebuffer(size_t index) const { return *swapchainFramebuffers_[index]; }
+    const vk::SwapchainKHR& getSwapchain() const noexcept { return *swapchain_; }
+    const size_t getFramebufferCount() const noexcept { return swapchainFramebuffers_.size(); }
+    const size_t size() const noexcept { return swapchainFramebuffers_.size(); }
+    const vk::Framebuffer& getFramebuffer(size_t index) const { return *swapchainFramebuffers_.at(index); }
 };

@@ -50,10 +50,10 @@ public:
         {
             for (int i = std::popcount(memoryRequirements.memoryTypeBits); --i >= 0; )
             {
-                uint32_t memoryType = static_cast<uint32_t>(std::countr_zero(memoryRequirements.memoryTypeBits));
+                const uint32_t memoryType = gsl::narrow<uint32_t>(std::countr_zero(memoryRequirements.memoryTypeBits));
                 if (memoryType > memoryProperties.memoryTypeCount)
                     break;
-                if ((memoryProperties.memoryTypes[memoryType].propertyFlags & memoryPropertyFlags_) == memoryPropertyFlags_)
+                if ((memoryProperties.memoryTypes.at(memoryType).propertyFlags & memoryPropertyFlags_) == memoryPropertyFlags_)
                     return memoryType;
                 memoryRequirements.memoryTypeBits ^= 1 << memoryType;
             }
@@ -67,11 +67,11 @@ public:
     VulkanBuffer(VulkanBuffer&&) = default;
     VulkanBuffer& operator=(VulkanBuffer&&) = default;
 
-    const vk::Buffer& get() const { return *buffer_; }
+    const vk::Buffer& get() const noexcept { return *buffer_; }
     constexpr vk::DeviceSize size() const { return bufferSize_; }
     constexpr vk::DeviceSize capacity() const { return bufferCapacity_; }
     template <typename T, size_t N>
-    void copyFrom(const std::span<T, N> data) const
+    void copyFrom(const gsl::span<const T, N> data) const
     {
         static_assert(bufferType == VulkanBufferType::Staging);
         assert(data.size_bytes() <= bufferSize_);
@@ -80,7 +80,7 @@ public:
         device_.unmapMemory(*bufferMemory_);
     }
     template <typename T, size_t N>
-    void copyTo(std::span<T, N> data) const
+    void copyTo(const gsl::span<T, N> data) const
     {
         static_assert(bufferType == VulkanBufferType::Staging);
         assert(data.size_bytes() >= bufferSize_);

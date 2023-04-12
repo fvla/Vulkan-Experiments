@@ -8,7 +8,7 @@ if(MSVC)
     # Warning C5246 is useless and complains about std::array initializer lists.
     # Warning C5045 involves Spectre mitigation, which I do not care for.
     # Warnings C4710 and C4711 spam too much inlining information for library header files.
-    add_compile_options(/Wall /wd5246 /wd5045 /wd4710 /wd4711 /GR-)
+    add_compile_options(/W4 /wd5246 /wd5045 /wd4710 /wd4711 /GR-)
 else(MSVC)
     add_compile_options(-Wall)
 endif(MSVC)
@@ -16,6 +16,16 @@ endif(MSVC)
 find_package(Vulkan REQUIRED COMPONENTS glslc)
 find_package(SDL2 CONFIG REQUIRED)
 find_package(glm REQUIRED)
+# find_package(Microsoft.GSL CONFIG REQUIRED)
+
+include(FetchContent)
+
+FetchContent_Declare(GSL
+    GIT_REPOSITORY "https://github.com/microsoft/GSL"
+    GIT_TAG 1d036585ccea8a57dc5fdc84406181db3d1f3205
+    GIT_SHALLOW ON
+)
+FetchContent_MakeAvailable(GSL)
 
 file(GLOB SOURCES CONFIGURE_DEPENDS src/*.c src/*.cpp)
 file(GLOB HEADERS CONFIGURE_DEPENDS src/*.h src/*.hpp)
@@ -52,4 +62,12 @@ add_custom_command(TARGET vulkan-test POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders/" "$<TARGET_FILE_DIR:vulkan-test>/shaders/"
 )
 target_include_directories(vulkan-test PRIVATE "src/")
-target_link_libraries(vulkan-test Vulkan::Vulkan SDL2::SDL2 SDL2::SDL2main SDL2::SDL2-static glm::glm)
+target_link_libraries(vulkan-test Vulkan::Vulkan SDL2::SDL2 SDL2::SDL2main SDL2::SDL2-static glm::glm Microsoft.GSL::GSL)
+if(MSVC)
+    set_target_properties(vulkan-test PROPERTIES
+        VS_GLOBAL_RunCodeAnalysis true
+        VS_GLOBAL_EnableMicrosoftCodeAnalysis true
+        VS_GLOBAL_CodeAnalysisRuleSet AllRules.ruleset
+    )
+    target_compile_options(vulkan-test PRIVATE /analyze:external-)
+endif()

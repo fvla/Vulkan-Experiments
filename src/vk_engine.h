@@ -24,8 +24,8 @@ class TrianglePipeline
     /* TODO: Move pipeline initialization into a new class "PipelineCore" instead of passing a reference. */
     std::reference_wrapper<const vk::Pipeline> pipeline_;
     /* TODO: viewports and scissors should be owned by the pipeline or pipeline core. */
-    std::span<vk::Viewport> viewports_;
-    std::span<vk::Rect2D> scissors_;
+    gsl::span<vk::Viewport> viewports_;
+    gsl::span<vk::Rect2D> scissors_;
 
     VulkanCommandHandlerPool<5> temporaryCommandPool_;
 
@@ -43,13 +43,13 @@ class TrianglePipeline
 public:
     TrianglePipeline(const vk::PhysicalDevice& physicalDevice, const vk::Device& device,
                      VulkanCommandHandlerPool<bufferCount>& commandHandlerPool, const vk::Pipeline& pipeline,
-                     const VulkanQueueInfo& queueInfo, std::span<vk::Viewport> viewports, std::span<vk::Rect2D> scissors) :
+                     const VulkanQueueInfo& queueInfo, gsl::span<vk::Viewport> viewports, gsl::span<vk::Rect2D> scissors) :
         imageReadySemaphore_(device), renderFinishedSemaphore_(device), commandHandlerPool_(commandHandlerPool),
         pipeline_(pipeline), viewports_(viewports), scissors_(scissors), temporaryCommandPool_(device, 1, queueInfo),
         vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_))
     {
         VulkanBuffer<eTransferSrc, VulkanBufferType::Staging> stagingBuffer(physicalDevice, device, vertexBuffer_.size());
-        stagingBuffer.copyFrom(std::span(vertexBufferArray_));
+        stagingBuffer.copyFrom(gsl::span(vertexBufferArray_));
         {
             auto& handler = temporaryCommandPool_.getHandler(0);
             handler.recordOnce(recordCopyBuffers(stagingBuffer, vertexBuffer_));
@@ -69,16 +69,16 @@ public:
     void run(const VulkanSwapchain<>& swapchain, const vk::Queue& queue)
     {
         currentCommandHandler_.apply([](auto& handler) { handler.waitAndReset(); });
-        uint32_t imageIndex = swapchain.acquireNextImage(imageReadySemaphore_.get());
+        const uint32_t imageIndex = swapchain.acquireNextImage(imageReadySemaphore_.get());
         auto& handler = commandHandlerPool_.get().getHandler(imageIndex);
         currentCommandHandler_ = handler;
 
         {
-            vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, {}, renderFinishedSemaphore_.get());
+            const vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, {}, renderFinishedSemaphore_.get());
             handler.submitTo(queue, submitInfo);
         }
         {
-            vk::PresentInfoKHR presentInfo(renderFinishedSemaphore_.get(), swapchain.getSwapchain(), imageIndex);
+            const vk::PresentInfoKHR presentInfo(renderFinishedSemaphore_.get(), swapchain.getSwapchain(), imageIndex);
             VK_CHECK(queue.presentKHR(presentInfo));
         }
     }
@@ -88,8 +88,8 @@ public:
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_);
         commandBuffer.setViewport(0, viewports_);
         commandBuffer.setScissor(0, scissors_);
-        commandBuffer.bindVertexBuffers(0, vertexBuffer_.get(), vk::DeviceSize(0));
-        commandBuffer.draw(static_cast<uint32_t>(vertexBuffer_.size()), 1, 0, 0);
+        commandBuffer.bindVertexBuffers(0, vertexBuffer_.get(), vk::DeviceSize{0});
+        commandBuffer.draw(gsl::narrow<uint32_t>(vertexBuffer_.size()), 1, 0, 0);
     }
 };
 
@@ -129,7 +129,10 @@ public:
     ~VulkanEngine();
     VulkanEngine(const VulkanEngine&) = delete;
     VulkanEngine& operator=(const VulkanEngine&) = delete;
+    VulkanEngine(VulkanEngine&&) = delete;
+    VulkanEngine& operator=(VulkanEngine&&) = delete;
 
+    void resetSurface();
     void recreateSwapchain();
     void draw();
     void run();

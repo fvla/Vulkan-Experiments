@@ -19,7 +19,7 @@ public:
     VulkanSemaphore(VulkanSemaphore&&) = default;
     VulkanSemaphore& operator=(VulkanSemaphore&&) = default;
 
-    const vk::Semaphore& get() const { return semaphore_.get(); }
+    const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
 };
 
 template <Void V = void>
@@ -40,8 +40,8 @@ public:
     VulkanTimelineSemaphore(VulkanTimelineSemaphore&&) = default;
     VulkanTimelineSemaphore& operator=(VulkanTimelineSemaphore&&) = default;
 
-    const vk::Semaphore& get() const { return semaphore_.get(); }
-    void wait(std::chrono::nanoseconds timeout) const { wait(static_cast<uint64_t>(std::max(0ll, timeout.count()))); }
+    const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
+    void wait(std::chrono::nanoseconds timeout) const { wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
     void wait() const { wait(std::chrono::nanoseconds::max()); }
     uint64_t counter() const { device_.getSemaphoreCounterValue(*semaphore_); }
     void signal(uint64_t value) const { device_.signalSemaphore({ *semaphore_, value }); }
@@ -64,8 +64,8 @@ public:
     VulkanFence(VulkanFence&&) = default;
     VulkanFence& operator=(VulkanFence&&) = default;
 
-    const vk::Fence& get() const { return fence_.get(); }
-    vk::Result wait(std::chrono::nanoseconds timeout) const { return wait(static_cast<uint64_t>(std::max(0ll, timeout.count()))); }
+    const vk::Fence& get() const noexcept { return fence_.get(); }
+    vk::Result wait(std::chrono::nanoseconds timeout) const { return wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
     vk::Result wait() const { return wait(std::chrono::nanoseconds::max()); }
     void reset() const { device_.resetFences({ *fence_ }); }
     /* Possible values are eSuccess, eNotReady, and eErrorDeviceLost */

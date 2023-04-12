@@ -12,7 +12,7 @@ VulkanEngine::VulkanEngine()
 {
     SDL_Init(SDL_INIT_VIDEO);
 
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
+    constexpr auto window_flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
 
     window_ = SDL_CreateWindow(
         "Vulkan Engine", //window title
@@ -33,7 +33,7 @@ VulkanEngine::VulkanEngine()
     }
     // Instance
     {
-        vk::ApplicationInfo appInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_0);
+        const auto appInfo = vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_0);
         checkValidationLayers();
         if constexpr (vk::enableValidationLayers)
         {
@@ -47,32 +47,21 @@ VulkanEngine::VulkanEngine()
         std::cout << "Enabled instance extensions:" << std::endl;
         for (auto extension : AvailableFeatures::instanceExtensions)
             std::cout << "\t" << extension << std::endl;
-        vk::InstanceCreateInfo createInfo({}, &appInfo, AvailableFeatures::validationLayers, AvailableFeatures::instanceExtensions);
+        const vk::InstanceCreateInfo createInfo({}, &appInfo, AvailableFeatures::validationLayers, AvailableFeatures::instanceExtensions);
         instance_ = vk::createInstanceUnique(createInfo);
     }
-    {
-        auto extensions = vk::enumerateInstanceExtensionProperties();
-        std::cout << "Available instance extensions:" << std::endl;
-        for (auto& extension : extensions)
-            std::cout << "\t" << extension.extensionName << std::endl;
-    }
     // Surface
-    {
-        vk::SurfaceKHR surface;
-        if (!SDL_Vulkan_CreateSurface(window_, *instance_, &reinterpret_cast<VkSurfaceKHR&>(surface)))
-            throw FatalError(std::string("Failed to create SDL Vulkan surface: ") + SDL_GetError());
-        surface_ = vk::UniqueSurfaceKHR(surface, *instance_);
-    }
+    resetSurface();
     // Physical device
     {
         auto isDeviceSuitable = [this](const vk::PhysicalDevice& device)
         {
-            auto deviceProperties = device.getProperties();
-            auto deviceFeatures = device.getFeatures();
+            const auto deviceProperties = device.getProperties();
+            const auto deviceFeatures = device.getFeatures();
             if (!(deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && deviceFeatures.geometryShader))
                 return false;
-            auto queueFamilyProperties = device.getQueueFamilyProperties();
-            for (uint32_t queueIndex = 0; auto & queueFamily : queueFamilyProperties)
+            const auto queueFamilyProperties = device.getQueueFamilyProperties();
+            for (uint32_t queueIndex = 0; const auto& queueFamily : queueFamilyProperties)
             {
                 if ((queueFamily.queueFlags & vk::QueueFlagBits::eGraphics) && device.getSurfaceSupportKHR(queueIndex, *surface_))
                     return true;
@@ -81,7 +70,7 @@ VulkanEngine::VulkanEngine()
             return false;
         };
         auto physicalDevices = instance_->enumeratePhysicalDevices();
-        auto physicalDeviceIt = std::find_if(physicalDevices.begin(), physicalDevices.end(), isDeviceSuitable);
+        auto physicalDeviceIt = std::ranges::find_if(physicalDevices, isDeviceSuitable);
         if (physicalDeviceIt == physicalDevices.end())
             throw FatalError("Failed to find a suitable GPU for Vulkan rendering");
         physicalDevice_ = *physicalDeviceIt;
@@ -128,7 +117,7 @@ VulkanEngine::VulkanEngine()
         for (auto extension : AvailableFeatures::deviceExtensions)
             std::cout << "\t" << extension << std::endl;
 
-        vk::DeviceCreateInfo deviceInfo({}, queueInfos, {}, AvailableFeatures::deviceExtensions);
+        const vk::DeviceCreateInfo deviceInfo({}, queueInfos, {}, AvailableFeatures::deviceExtensions);
         device_ = physicalDevice_.createDeviceUnique(deviceInfo);
         for (auto& queueInfo : queueInfos)
             for (uint32_t queueIndex = 0; queueIndex < queueInfo.queueCount; queueIndex++)
@@ -147,7 +136,7 @@ VulkanEngine::VulkanEngine()
             vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0u, vk::PipelineStageFlagBits::eColorAttachmentOutput,
                                   vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, vk::AccessFlagBits::eColorAttachmentWrite)
         };
-        vk::RenderPassCreateInfo renderPassInfo({}, attachments, subpasses, subpassDependencies);
+        const vk::RenderPassCreateInfo renderPassInfo({}, attachments, subpasses, subpassDependencies);
         renderPass_ = device_->createRenderPassUnique(renderPassInfo);
     }
     // Shaders and full render pipeline
@@ -156,11 +145,16 @@ VulkanEngine::VulkanEngine()
         {
             std::ifstream file(filename, std::ios::ate | std::ios::binary);
             const size_t shaderSize = static_cast<size_t>(file.tellg());
-            std::vector<uint32_t> shaderContents((shaderSize + sizeof(uint32_t) - 1) / sizeof(uint32_t)); // ceil of shaderSize / 4
+            std::vector<char> shaderBytes(shaderSize);
             file.seekg(0);
-            file.read(reinterpret_cast<char*>(shaderContents.data()), static_cast<std::streamsize>(shaderSize));
+            file.read(shaderBytes.data(), shaderBytes.size());
+            std::vector<uint32_t> shaderContents((shaderSize + sizeof(uint32_t) - 1) / sizeof(uint32_t)); // ceil of shaderSize / 4
+            std::ranges::copy(
+                gsl::as_writable_bytes(gsl::span(shaderBytes)),
+                gsl::as_writable_bytes(gsl::span(shaderContents)).begin()
+            );
 
-            vk::ShaderModuleCreateInfo shaderInfo({}, shaderContents);
+            const vk::ShaderModuleCreateInfo shaderInfo({}, shaderContents);
             return device_->createShaderModuleUnique(shaderInfo);
         };
         auto vertexShaderModule = createShader("shaders/vertex_shader.spv");
@@ -173,20 +167,20 @@ VulkanEngine::VulkanEngine()
 
         auto vertexShaderStageInfo      = vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, *vertexShaderModule, "main");
         auto fragmentShaderStageInfo    = vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, *fragmentShaderModule, "main");
-        std::array shaderStages         = { vertexShaderStageInfo, fragmentShaderStageInfo };
-        auto dynamicStateInfo           = vk::PipelineDynamicStateCreateInfo({}, dynamicStates);
-        VertexInfo vertexInfo           = SimpleVertex::getVertexInputInfo();
-        auto& vertexInputInfo           = vertexInfo.info;
-        auto inputAssemblyInfo          = vk::PipelineInputAssemblyStateCreateInfo({}, vk::PrimitiveTopology::eTriangleList);
-        auto viewportInfo               = vk::PipelineViewportStateCreateInfo({}, viewports_, scissors_);
-        auto rasterizationInfo          = vk::PipelineRasterizationStateCreateInfo({}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
+        const std::array shaderStages   = { vertexShaderStageInfo, fragmentShaderStageInfo };
+        const auto dynamicStateInfo     = vk::PipelineDynamicStateCreateInfo({}, dynamicStates);
+        const VertexInfo vertexInfo     = SimpleVertex::getVertexInputInfo();
+        const auto& vertexInputInfo     = vertexInfo.info;
+        const auto inputAssemblyInfo    = vk::PipelineInputAssemblyStateCreateInfo({}, vk::PrimitiveTopology::eTriangleList);
+        const auto viewportInfo         = vk::PipelineViewportStateCreateInfo({}, viewports_, scissors_);
+        const auto rasterizationInfo    = vk::PipelineRasterizationStateCreateInfo({}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
                                                                                    vk::FrontFace::eClockwise, false, {}, {}, {}, 1.0f);
-        auto multisampleInfo            = vk::PipelineMultisampleStateCreateInfo({}, vk::SampleCountFlagBits::e1, false, 1.0f, nullptr, false, false);
-        auto colorBlendInfo             = vk::PipelineColorBlendStateCreateInfo({}, false, {}, colorBlendAttachments);
-        auto pipelineLayoutInfo         = vk::PipelineLayoutCreateInfo();
+        const auto multisampleInfo      = vk::PipelineMultisampleStateCreateInfo({}, vk::SampleCountFlagBits::e1, false, 1.0f, nullptr, false, false);
+        const auto colorBlendInfo       = vk::PipelineColorBlendStateCreateInfo({}, false, {}, colorBlendAttachments);
+        const auto pipelineLayoutInfo   = vk::PipelineLayoutCreateInfo();
         pipelineLayout_ = device_->createPipelineLayoutUnique(pipelineLayoutInfo);
 
-        auto graphicsPipelineInfo       = vk::GraphicsPipelineCreateInfo({}, shaderStages, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo,
+        const auto graphicsPipelineInfo       = vk::GraphicsPipelineCreateInfo({}, shaderStages, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo,
                                                                          &rasterizationInfo, &multisampleInfo, nullptr, &colorBlendInfo, &dynamicStateInfo,
                                                                          *pipelineLayout_, *renderPass_, 0);
         vk::Result pipelineResult;
@@ -209,7 +203,7 @@ VulkanEngine::VulkanEngine()
         for (size_t i = 0; auto& commandHandler : commandHandlerPool_)
         {
             trianglePipelines_.emplace_back(physicalDevice_, *device_, commandHandlerPool_, *pipeline_, graphicsQueues_.back(), viewports_, scissors_);
-            vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
+            const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
             commandHandler.record(renderPassInfo, [this](const vk::CommandBuffer& commandBuffer) { trianglePipelines_.back().recordTriangleCommand(commandBuffer); });
             i++;
         }
@@ -221,14 +215,27 @@ VulkanEngine::~VulkanEngine()
     SDL_DestroyWindow(window_);
 }
 
+void VulkanEngine::resetSurface()
+{
+    surface_.reset();
+    vk::SurfaceKHR surface;
+    if (!SDL_Vulkan_CreateSurface(window_, *instance_, &reinterpret_cast<VkSurfaceKHR&>(surface)))
+        throw FatalError(std::string("Failed to create SDL Vulkan surface: ") + SDL_GetError());
+    surface_ = vk::UniqueSurfaceKHR(surface, *instance_);
+}
+
 void VulkanEngine::recreateSwapchain()
 {
+    for (auto& commandHandler : commandHandlerPool_)
+        commandHandler.waitAndResetAll();
+    swapchain_.reset();
+    resetSurface();
     viewports_ = { vk::Viewport(0.0f, 0.0f, static_cast<float>(windowExtent_.width), static_cast<float>(windowExtent_.height), 0.0f, 1.0f) };
     scissors_ = { vk::Rect2D({ 0, 0 }, windowExtent_) };
     swapchain_.emplace(physicalDevice_, *device_, *renderPass_, *surface_, surfaceFormat_, windowExtent_);
-    for (size_t i = 0; auto & commandHandler : commandHandlerPool_)
+    for (size_t i = 0; auto& commandHandler : commandHandlerPool_)
     {
-        vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
+        const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
         commandHandler.record(renderPassInfo, [this](const vk::CommandBuffer& commandBuffer) { trianglePipelines_.back().recordTriangleCommand(commandBuffer); });
         i++;
     }
@@ -236,21 +243,40 @@ void VulkanEngine::recreateSwapchain()
 
 void VulkanEngine::draw()
 {
-    trianglePipelines_[frameNumber_ % trianglePipelines_.size()].run(*swapchain_, graphicsQueues_.back().queue);
+    trianglePipelines_.at(frameNumber_ % trianglePipelines_.size()).run(*swapchain_, graphicsQueues_.back().queue);
     frameNumber_++;
 }
 
 void VulkanEngine::run()
 {
-    SDL_Event e;
     bool bQuit = false;
 
     //main loop
     while (!bQuit)
     {
         //Handle events on queue
-        while (SDL_PollEvent(&e) != 0)
+        for (SDL_Event e{ 0 }; SDL_PollEvent(&e) != 0; )
         {
+            switch (e.type)
+            {
+            case SDL_QUIT:
+                bQuit = true;
+                break;
+            case SDL_WINDOWEVENT:
+                switch (e.window.event)
+                {
+                case SDL_WINDOWEVENT_RESIZED:
+                    windowExtent_.width = gsl::narrow<uint32_t>(e.window.data1);
+                    windowExtent_.height = gsl::narrow<uint32_t>(e.window.data2);
+                    recreateSwapchain();
+                    break;
+                default:
+                    break;
+                }
+                break;
+            default:
+                break;
+            }
             //close the window when user clicks the X button or alt-f4s
             if (e.type == SDL_QUIT) bQuit = true;
         }
