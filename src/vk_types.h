@@ -18,7 +18,8 @@
     do                                                                  \
     {                                                                   \
         const vk::Result err = x;                                       \
-        if (err != vk::Result::eSuccess)                                \
+        using enum vk::Result;                                          \
+        if (err != eSuccess && err != eTimeout)                         \
         {                                                               \
             std::stringstream ss;                                       \
             ss << "Detected Vulkan error on line " << __LINE__;         \

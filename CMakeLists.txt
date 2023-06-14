@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.12)
 project(VulkanTest)
 
 SET(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_CLANG_TIDY clang-tidy -checks=cppcoreguidelines-*,bugprone-*,concurrency-*,modernize-*)
 
 if(MSVC)
     # Warning C5246 is useless and complains about std::array initializer lists.
@@ -65,8 +66,9 @@ target_include_directories(vulkan-test PRIVATE "src/")
 target_link_libraries(vulkan-test Vulkan::Vulkan SDL2::SDL2 SDL2::SDL2main SDL2::SDL2-static glm::glm Microsoft.GSL::GSL)
 if(MSVC)
     set_target_properties(vulkan-test PROPERTIES
-        VS_GLOBAL_RunCodeAnalysis true
+        VS_GLOBAL_RunCodeAnalysis false
         VS_GLOBAL_EnableMicrosoftCodeAnalysis true
+        VS_GLOBAL_EnableClangTidyCodeAnalysis false
         VS_GLOBAL_CodeAnalysisRuleSet AllRules.ruleset
     )
     target_compile_options(vulkan-test PRIVATE /analyze:external-)

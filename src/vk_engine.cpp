@@ -7,6 +7,10 @@
 
 #include <fstream>
 #include <iostream>
+#include <ranges>
+
+using std::ranges::iota_view;
+using std::views::zip;
 
 VulkanEngine::VulkanEngine()
 {
@@ -130,7 +134,7 @@ VulkanEngine::VulkanEngine()
                                                          vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
                                                          vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR);
         std::array attachments = { colorAttachment };
-        std::array colorAttachmentRefs = { vk::AttachmentReference(0u, vk::ImageLayout::eAttachmentOptimal) };
+        std::array colorAttachmentRefs = { vk::AttachmentReference(0u, vk::ImageLayout::eColorAttachmentOptimal) };
         std::array subpasses = { vk::SubpassDescription({}, vk::PipelineBindPoint::eGraphics, {}, colorAttachmentRefs) };
         std::array subpassDependencies = {
             vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0u, vk::PipelineStageFlagBits::eColorAttachmentOutput,
@@ -199,13 +203,12 @@ VulkanEngine::VulkanEngine()
     }
     // Command pool and triangle pipeline
     {
-        commandHandlerPool_ = VulkanCommandHandlerPool(*device_, swapchain_->size(), graphicsQueues_.back());
-        for (size_t i = 0; auto& commandHandler : commandHandlerPool_)
+        commandPool_ = VulkanCommandPool(*device_, 8, graphicsQueues_.back());
+        for (size_t i = 0; i < swapchain_->getFramebufferCount(); i++)
         {
-            trianglePipelines_.emplace_back(physicalDevice_, *device_, commandHandlerPool_, *pipeline_, graphicsQueues_.back(), viewports_, scissors_);
+            trianglePipelines_.emplace_back(physicalDevice_, *device_, commandPool_, *pipeline_, graphicsQueues_.back(), viewports_, scissors_);
             const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
-            commandHandler.record(renderPassInfo, [this](const vk::CommandBuffer& commandBuffer) { trianglePipelines_.back().recordTriangleCommand(commandBuffer); });
-            i++;
+            trianglePipelines_.back().record(renderPassInfo);
         }
     }
 }
@@ -226,18 +229,15 @@ void VulkanEngine::resetSurface()
 
 void VulkanEngine::recreateSwapchain()
 {
-    for (auto& commandHandler : commandHandlerPool_)
-        commandHandler.waitAndResetAll();
     swapchain_.reset();
     resetSurface();
     viewports_ = { vk::Viewport(0.0f, 0.0f, static_cast<float>(windowExtent_.width), static_cast<float>(windowExtent_.height), 0.0f, 1.0f) };
     scissors_ = { vk::Rect2D({ 0, 0 }, windowExtent_) };
     swapchain_.emplace(physicalDevice_, *device_, *renderPass_, *surface_, surfaceFormat_, windowExtent_);
-    for (size_t i = 0; auto& commandHandler : commandHandlerPool_)
+    for (auto [i, pipeline] : zip(iota_view<size_t>(), trianglePipelines_))
     {
         const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
-        commandHandler.record(renderPassInfo, [this](const vk::CommandBuffer& commandBuffer) { trianglePipelines_.back().recordTriangleCommand(commandBuffer); });
-        i++;
+        pipeline.record(renderPassInfo);
     }
 }
 

@@ -65,9 +65,9 @@ public:
     VulkanFence& operator=(VulkanFence&&) = default;
 
     const vk::Fence& get() const noexcept { return fence_.get(); }
-    vk::Result wait(std::chrono::nanoseconds timeout) const { return wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
-    vk::Result wait() const { return wait(std::chrono::nanoseconds::max()); }
+    [[nodiscard]] vk::Result wait(std::chrono::nanoseconds timeout) const { return wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
+    [[nodiscard]] vk::Result wait() const { return wait(std::chrono::nanoseconds::max()); }
     void reset() const { device_.resetFences({ *fence_ }); }
     /* Possible values are eSuccess, eNotReady, and eErrorDeviceLost */
-    vk::Result status() const { device_.getFenceStatus(*fence_); }
+    [[nodiscard]] vk::Result status() const { return device_.getFenceStatus(*fence_); }
 };

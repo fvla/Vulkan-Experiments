@@ -10,101 +10,105 @@
 template <typename T>
 concept VulkanCommandRecorder = requires(T recorder)
 {
-    { recorder(vk::CommandBuffer()) } -> std::same_as<void>;
+    { recorder(std::declval<vk::CommandBuffer>()) } -> std::same_as<void>;
 };
 
-/* Command handler that uses ring buffer of command buffers to re-record commands.
-   Not safe to use from multiple threads. */
-template <int64_t bufferCount, Void V = void>
-class VulkanCommandHandler
+class VulkanCommandPool;
+
+namespace detail
 {
-    static_assert(bufferCount > 1);
-public:
-    using CommandBuffersView = std::array<vk::CommandBuffer, bufferCount>; // Command buffers are owned by pool.
-private:
-    CommandBuffersView commandBuffers_;
-    std::unique_ptr<std::array<std::atomic_bool, bufferCount>> commandBufferInFlight_ =
-        std::make_unique<std::array<std::atomic_bool, bufferCount>>();
-    std::array<VulkanFence<V>, bufferCount> commandBufferFences_;
-    static constexpr int64_t terminateFlag_ = -2;
-    std::unique_ptr<std::atomic<int64_t>> currentBufferIndex_ = std::make_unique<std::atomic<int64_t>>(-1);
-    std::unique_ptr<std::atomic<int64_t>> currentDiscardedBufferIndex_ = std::make_unique<std::atomic<int64_t>>(-1);
-    VulkanQueueInfo queueInfo_;
 
-    /* Optimization would be one resetter thread per pool, rather than one per handler. */
-    std::jthread resetter_;
-    void commandResetThread()
+class VulkanCommandPoolImpl
+{
+    friend class VulkanCommandPool;
+
+    vk::Device device_;
+    size_t bufferCount_;
+    vk::UniqueCommandPool commandPool_;
+    std::vector<vk::UniqueCommandBuffer> commandBuffers_;
+
+    VulkanCommandPoolImpl(vk::Device device, size_t bufferCount, VulkanQueueInfo queueInfo)
+        : device_(device), bufferCount_(bufferCount)
     {
-        /* Reminder: to ensure that the thread terminates, we must check if we are in termination state
-           each time we load currentBufferIndex_. */
-        auto index = currentBufferIndex_->load();
-        while (index != terminateFlag_)
+        const vk::CommandPoolCreateInfo commandPoolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queueInfo.familyIndex);
+        commandPool_ = device.createCommandPoolUnique(commandPoolInfo);
+
+        const vk::CommandBufferAllocateInfo commandBufferInfo(*commandPool_, vk::CommandBufferLevel::ePrimary, gsl::narrow<uint32_t>(bufferCount));
+        commandBuffers_ = device.allocateCommandBuffersUnique(commandBufferInfo);
+    }
+
+    vk::UniqueCommandBuffer checkOut()
+    {
+        if (commandBuffers_.empty())
         {
-            assert(currentDiscardedBufferIndex_->load() == index); // loop iteration pre-condition
-            currentBufferIndex_->wait(index);
-            index = currentBufferIndex_->load();
-            if (index == terminateFlag_)
-                break;
-            assert(index != -1); // index == -1 only occurs at initial state
-            assert(currentDiscardedBufferIndex_->load() != index);
-            do
-            {
-                auto discardedIndex = currentDiscardedBufferIndex_->load();
-                if (discardedIndex != -1)
-                {
-                    if (commandBufferInFlight_->data()[static_cast<size_t>(index)])
-                        if (commandBufferFences_[static_cast<size_t>(discardedIndex)].wait() == vk::Result::eSuccess)
-                            commandBufferFences_[static_cast<size_t>(discardedIndex)].reset();
-                    commandBuffers_[static_cast<size_t>(discardedIndex)].reset(vk::CommandBufferResetFlagBits::eReleaseResources);
-                }
-                currentDiscardedBufferIndex_->store((discardedIndex + 1) / bufferCount);
-                currentDiscardedBufferIndex_->notify_all();
-                index = currentBufferIndex_->load();
-            } while (index != terminateFlag_ && index != currentDiscardedBufferIndex_->load());
+            const auto extraBuffers = bufferCount_ / 2;
+            bufferCount_ += extraBuffers;
+            const vk::CommandBufferAllocateInfo commandBufferInfo(*commandPool_, vk::CommandBufferLevel::ePrimary, gsl::narrow<uint32_t>(extraBuffers));
+            auto newCommandBuffers = device_.allocateCommandBuffersUnique(commandBufferInfo);
+            commandBuffers_.insert(
+                commandBuffers_.end(),
+                std::make_move_iterator(newCommandBuffers.begin()),
+                std::make_move_iterator(newCommandBuffers.end())
+            );
         }
+        vk::UniqueCommandBuffer commandBuffer = std::move(commandBuffers_.back());
+        commandBuffers_.pop_back();
+        return commandBuffer;
     }
-
-    template <size_t... Indices>
-    std::array<VulkanFence<V>, bufferCount> getFences(const vk::Device& device, std::index_sequence<Indices...>)
+public:
+    void checkIn(vk::UniqueCommandBuffer commandBuffer) noexcept
     {
-        static_assert(sizeof...(Indices) == bufferCount);
-        return { (static_cast<void>(Indices), VulkanFence(device))... }; // Comma operator to ignore indices and construct bufferCount fences
+        commandBuffers_.emplace_back();
+        commandBuffers_.back().swap(commandBuffer);
     }
-    template <typename IndexSequence>
-    auto getFences(const vk::Device& device) { return getFences(device, IndexSequence()); }
+};
+
+}
+
+/* RAII wrapper for command buffer leased from a command pool. */
+class VulkanCommandBuffer
+{
+    friend class VulkanCommandPool;
+
+    std::shared_ptr<detail::VulkanCommandPoolImpl> commandPool_;
+    vk::UniqueCommandBuffer commandBuffer_;
+    VulkanFence<> fence_;
 
     template <VulkanCommandRecorder Recorder, vk::CommandBufferUsageFlags flags>
     void record_(Recorder recorder)
     {
-        int64_t nextBuffer = (currentBufferIndex_->load() + 1) % static_cast<int64_t>(bufferCount);
-        currentDiscardedBufferIndex_->wait(nextBuffer); // Wait until nextBuffer is free (which should usually be instantly)
-        currentBufferIndex_->store(nextBuffer);
-        currentBufferIndex_->notify_all();
+        commandBuffer_->begin({ vk::CommandBufferUsageFlags(flags) });
+        recorder(*commandBuffer_);
+        commandBuffer_->end();
+    }
 
-        const vk::CommandBuffer& currentBuffer = commandBuffers_[static_cast<size_t>(nextBuffer)];
-        currentBuffer.begin({ vk::CommandBufferUsageFlags(flags) });
-        recorder(currentBuffer);
-        currentBuffer.end();
-    }
+    VulkanCommandBuffer(const vk::Device& device, std::shared_ptr<detail::VulkanCommandPoolImpl> commandPool, vk::UniqueCommandBuffer commandBuffer)
+        : commandPool_(commandPool), commandBuffer_(std::move(commandBuffer)), fence_(device)
+    {}
 public:
-    VulkanCommandHandler(const vk::Device& device, CommandBuffersView commandBuffers) :
-        commandBuffers_(std::move(commandBuffers)),
-        commandBufferFences_(getFences<std::make_index_sequence<bufferCount>>(device))
+    VulkanCommandBuffer(const VulkanCommandBuffer&) = delete;
+    VulkanCommandBuffer& operator=(const VulkanCommandBuffer&) = delete;
+    VulkanCommandBuffer(VulkanCommandBuffer&&) = default;
+    VulkanCommandBuffer& operator=(VulkanCommandBuffer&&) = default;
+
+    ~VulkanCommandBuffer()
     {
-        resetter_ = std::jthread([this]() { commandResetThread(); });
+        /* Skip if command buffer was moved from */
+        if (commandPool_)
+        {
+            try
+            {
+                VK_CHECK(wait());
+                commandBuffer_->reset(vk::CommandBufferResetFlagBits::eReleaseResources);
+            }
+            catch (...) {}
+            commandPool_->checkIn(std::move(commandBuffer_));
+        }
     }
-    ~VulkanCommandHandler() { currentBufferIndex_->store(terminateFlag_); currentBufferIndex_->notify_all(); }
-    VulkanCommandHandler(const VulkanCommandHandler&) = delete;
-    VulkanCommandHandler& operator=(const VulkanCommandHandler&) = delete;
-    VulkanCommandHandler(VulkanCommandHandler&&) = default;
-    VulkanCommandHandler& operator=(VulkanCommandHandler&&) = default;
 
     void submitTo(const vk::Queue& queue, vk::SubmitInfo submitInfo = {})
     {
-        assert(currentBufferIndex_->load() >= 0);
-        auto index = static_cast<uint64_t>(currentBufferIndex_->load());
-        commandBufferInFlight_->data()[index].store(true);
-        queue.submit(submitInfo.setCommandBuffers(commandBuffers_[index]), commandBufferFences_[index].get());
+        queue.submit(submitInfo.setCommandBuffers(*commandBuffer_), fence_.get());
     }
     template <VulkanCommandRecorder Recorder>
     void record(Recorder recorder)
@@ -137,80 +141,44 @@ public:
             commandBuffer.endRenderPass();
         });
     }
-    void waitAndReset()
-    {
-        if (auto index = currentBufferIndex_->load(); index >= 0)
-        {
-            commandBufferFences_[static_cast<size_t>(index)].wait();
-            /* Order matters; command buffer must be set to be not in flight before fence
-               is reset to avoid deadlock. */
-            commandBufferInFlight_->data()[static_cast<size_t>(index)].store(false);
-            commandBufferFences_[static_cast<size_t>(index)].reset();
-        }
-    }
-    /* If you record and enqueue several one-time command buffers from the same handler, then
-       this method allows you to wait until all command buffers have finished executing. */
-    void waitAndResetAll()
-    {
-        if (auto index = currentBufferIndex_->load(); index >= 0)
-        {
-            commandBufferFences_[static_cast<size_t>(index)].wait();
-            /* Order matters; command buffer must be set to be not in flight before fence
-               is reset to avoid deadlock. */
-            commandBufferInFlight_->data()[static_cast<size_t>(index)].store(false);
-            commandBufferFences_[static_cast<size_t>(index)].reset();
 
-            for (auto discardedIndex = currentDiscardedBufferIndex_->load(); discardedIndex != index; )
-                currentDiscardedBufferIndex_->wait(discardedIndex);
-        }
+    [[nodiscard]] vk::Result wait() const { return fence_.wait(); }
+    [[nodiscard]] vk::Result wait(std::chrono::nanoseconds timeout) const { return fence_.wait(timeout); }
+private:
+    /* You never want to call reset without waiting first. */
+    void reset() const { fence_.reset(); }
+public:
+    [[nodiscard]] vk::Result waitAndReset() const
+    {
+        const vk::Result result = wait();
+        reset();
+        return result;
     }
+    [[nodiscard]] vk::Result waitAndReset(std::chrono::nanoseconds timeout) const
+    {
+        const vk::Result result = wait(timeout);
+        reset();
+        return result;
+    }
+
+    /* TODO: Stop breaking encapsulation! */
+    const vk::CommandBuffer& get() const noexcept { return *commandBuffer_; }
 };
 
 /* Note: only handles primary command buffers. */
-template <size_t bufferCount = 2, Void V = void>
-class VulkanCommandHandlerPool
+class VulkanCommandPool
 {
-    size_t handlerCount_;
-    VulkanQueueInfo queueInfo_;
-    vk::UniqueCommandPool commandPool_;
-    std::vector<vk::UniqueCommandBuffer> commandBuffers_;
-
-    using CommandHandler = VulkanCommandHandler<bufferCount, V>;
-    std::vector<CommandHandler> commandHandlers_;
-
-    template <size_t... Indices>
-    CommandHandler::CommandBuffersView getCommandBuffersView(size_t handlerIndex, std::index_sequence<Indices...>)
-    {
-        static_assert(sizeof...(Indices) == bufferCount);
-        return { commandBuffers_[Indices + handlerIndex * bufferCount].get()... };
-    }
-    template <typename IndexSequence>
-    auto getCommandBuffersView(size_t handlerIndex) { return getCommandBuffersView(handlerIndex, IndexSequence()); }
+    std::shared_ptr<detail::VulkanCommandPoolImpl> commandPoolImpl_;
 public:
-    VulkanCommandHandlerPool() = default;
-    VulkanCommandHandlerPool(const VulkanCommandHandlerPool&) = delete;
-    VulkanCommandHandlerPool& operator=(const VulkanCommandHandlerPool&) = delete;
-    VulkanCommandHandlerPool(VulkanCommandHandlerPool&&) = default;
-    VulkanCommandHandlerPool& operator=(VulkanCommandHandlerPool&&) = default;
-    VulkanCommandHandlerPool(const vk::Device& device, size_t handlerCount, VulkanQueueInfo queueInfo)
-        : handlerCount_(handlerCount), queueInfo_(queueInfo)
+    VulkanCommandPool() noexcept {}
+    [[gsl::suppress(r.11)]]
+    VulkanCommandPool(const vk::Device& device, size_t bufferCount, VulkanQueueInfo queueInfo)
+        : commandPoolImpl_(new detail::VulkanCommandPoolImpl(device, bufferCount, queueInfo))
+    {}
+
+    VulkanCommandBuffer checkOut()
     {
-        vk::CommandPoolCreateInfo commandPoolInfo({}, queueInfo_.familyIndex);
-        commandPool_ = device.createCommandPoolUnique(commandPoolInfo);
-
-        vk::CommandBufferAllocateInfo commandBufferInfo(*commandPool_, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(handlerCount * bufferCount));
-        commandBuffers_ = device.allocateCommandBuffersUnique(commandBufferInfo);
-        assert(commandBuffers_.size() == handlerCount * bufferCount);
-
-        commandHandlers_.reserve(handlerCount);
-        for (size_t i = 0; i < handlerCount; i++)
-            commandHandlers_.emplace_back(device, getCommandBuffersView<std::make_index_sequence<bufferCount>>(i));
-        assert(commandHandlers_.size() == handlerCount);
+        Expects(commandPoolImpl_); // TODO: Remove this unsafe check by getting rid of default constructor.
+        return { commandPoolImpl_->device_, commandPoolImpl_, commandPoolImpl_->checkOut() };
     }
-
-    size_t getHandlerCount() const { return handlerCount_; }
-    size_t size() const { return handlerCount_; }
-    CommandHandler& getHandler(size_t index) { return commandHandlers_[index]; }
-    auto begin() { return commandHandlers_.begin(); }
-    auto end() { return commandHandlers_.end(); }
 };

@@ -5,6 +5,7 @@
 #include "vk_command.h"
 #include "vk_swapchain.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -13,24 +14,21 @@ struct SDL_Window;
 /* This class contains the main drawing logic. It's a mess; need to abstract it better
    once I understand the program structure better. This level of dependency injection
    is unacceptable. */
-template <size_t bufferCount = 2, Void V = void>
 class TrianglePipeline
 {
-    VulkanSemaphore<V> imageReadySemaphore_;
-    VulkanSemaphore<V> renderFinishedSemaphore_;
-
-    std::reference_wrapper<VulkanCommandHandlerPool<bufferCount>> commandHandlerPool_;
-    OptionalReference<VulkanCommandHandler<bufferCount>> currentCommandHandler_;
-    /* TODO: Move pipeline initialization into a new class "PipelineCore" instead of passing a reference. */
-    std::reference_wrapper<const vk::Pipeline> pipeline_;
-    /* TODO: viewports and scissors should be owned by the pipeline or pipeline core. */
-    gsl::span<vk::Viewport> viewports_;
-    gsl::span<vk::Rect2D> scissors_;
-
-    VulkanCommandHandlerPool<5> temporaryCommandPool_;
+    VulkanSemaphore<> imageReadySemaphore_;
+    VulkanSemaphore<> renderFinishedSemaphore_;
 
     using enum vk::BufferUsageFlagBits;
     VulkanBuffer<eVertexBuffer | eTransferDst, VulkanBufferType::DeviceLocal> vertexBuffer_;
+
+    VulkanCommandPool& commandPool_;
+    VulkanCommandBuffer commandBuffer_;
+    /* TODO: Move pipeline initialization into a new class "PipelineCore" instead of passing a reference. */
+    const vk::Pipeline& pipeline_;
+    /* TODO: viewports and scissors should be owned by the pipeline or pipeline core. */
+    gsl::span<vk::Viewport> viewports_;
+    gsl::span<vk::Rect2D> scissors_;
 
     constexpr static std::array<vk::PipelineStageFlags, 1> waitStages_
         = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
@@ -42,40 +40,33 @@ class TrianglePipeline
     });
 public:
     TrianglePipeline(const vk::PhysicalDevice& physicalDevice, const vk::Device& device,
-                     VulkanCommandHandlerPool<bufferCount>& commandHandlerPool, const vk::Pipeline& pipeline,
+                     VulkanCommandPool& commandPool, const vk::Pipeline& pipeline,
                      const VulkanQueueInfo& queueInfo, gsl::span<vk::Viewport> viewports, gsl::span<vk::Rect2D> scissors) :
-        imageReadySemaphore_(device), renderFinishedSemaphore_(device), commandHandlerPool_(commandHandlerPool),
-        pipeline_(pipeline), viewports_(viewports), scissors_(scissors), temporaryCommandPool_(device, 1, queueInfo),
-        vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_))
+        imageReadySemaphore_(device), renderFinishedSemaphore_(device), commandPool_(commandPool),
+        vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_)),
+        commandBuffer_(commandPool.checkOut()), pipeline_(pipeline), viewports_(viewports), scissors_(scissors)
     {
         VulkanBuffer<eTransferSrc, VulkanBufferType::Staging> stagingBuffer(physicalDevice, device, vertexBuffer_.size());
         stagingBuffer.copyFrom(gsl::span(vertexBufferArray_));
         {
-            auto& handler = temporaryCommandPool_.getHandler(0);
-            handler.recordOnce(recordCopyBuffers(stagingBuffer, vertexBuffer_));
-            handler.submitTo(queueInfo.queue);
-            handler.waitAndReset();
+            auto commandBuffer = commandPool_.checkOut();
+            commandBuffer.recordOnce(recordCopyBuffers(stagingBuffer, vertexBuffer_));
+            commandBuffer.submitTo(queueInfo.queue);
         }
     }
     TrianglePipeline(const TrianglePipeline&) = delete;
     TrianglePipeline& operator=(const TrianglePipeline&) = delete;
-    TrianglePipeline(TrianglePipeline && other) = default;
+    TrianglePipeline(TrianglePipeline&& other) = default;
     TrianglePipeline& operator=(TrianglePipeline&&) = default;
-    ~TrianglePipeline()
-    {
-        currentCommandHandler_.apply([](auto& handler) { handler.waitAndReset(); });
-    }
 
     void run(const VulkanSwapchain<>& swapchain, const vk::Queue& queue)
     {
-        currentCommandHandler_.apply([](auto& handler) { handler.waitAndReset(); });
         const uint32_t imageIndex = swapchain.acquireNextImage(imageReadySemaphore_.get());
-        auto& handler = commandHandlerPool_.get().getHandler(imageIndex);
-        currentCommandHandler_ = handler;
+        VK_CHECK(commandBuffer_.waitAndReset());
 
         {
-            const vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, {}, renderFinishedSemaphore_.get());
-            handler.submitTo(queue, submitInfo);
+            const vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, commandBuffer_.get(), renderFinishedSemaphore_.get());
+            commandBuffer_.submitTo(queue, submitInfo);
         }
         {
             const vk::PresentInfoKHR presentInfo(renderFinishedSemaphore_.get(), swapchain.getSwapchain(), imageIndex);
@@ -83,6 +74,12 @@ public:
         }
     }
 
+    void record(const vk::RenderPassBeginInfo& renderPassInfo)
+    {
+        commandBuffer_.record(renderPassInfo,
+                              [this](const auto& commandBuffer) { recordTriangleCommand(commandBuffer); });
+    }
+private:
     void recordTriangleCommand(const vk::CommandBuffer& commandBuffer)
     {
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_);
@@ -112,9 +109,9 @@ class VulkanEngine : RequiresFeature<SDLFeature>
 
     vk::UniqueBuffer vertexBuffer_;
 
-    VulkanCommandHandlerPool<> commandHandlerPool_;
+    VulkanCommandPool commandPool_;
 
-    std::vector<TrianglePipeline<>> trianglePipelines_;
+    std::vector<TrianglePipeline> trianglePipelines_;
 
     uint64_t frameNumber_{ 0 };
 
