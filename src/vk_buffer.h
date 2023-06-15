@@ -43,10 +43,10 @@ public:
     {
         buffer_ = device_.createBufferUnique(vk::BufferCreateInfo({}, bufferSize, usage, vk::SharingMode::eExclusive, {}));
         vk::MemoryRequirements memoryRequirements = device_.getBufferMemoryRequirements(*buffer_);
-        vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
+        const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
         bufferCapacity_ = memoryRequirements.size;
 
-        constexpr auto findMemoryType = [&]()
+        constexpr auto findMemoryType = [](auto& memoryRequirements, const auto& memoryProperties)
         {
             for (int i = std::popcount(memoryRequirements.memoryTypeBits); --i >= 0; )
             {
@@ -59,7 +59,7 @@ public:
             }
             throw FatalError("Failed to find suitable memory type for VulkanBuffer");
         };
-        bufferMemory_ = device_.allocateMemoryUnique(vk::MemoryAllocateInfo(bufferCapacity_, findMemoryType()));
+        bufferMemory_ = device_.allocateMemoryUnique({ bufferCapacity_, findMemoryType(memoryRequirements, memoryProperties) });
         device_.bindBufferMemory(*buffer_, *bufferMemory_, 0);
     }
     VulkanBuffer(const VulkanBuffer&) = delete;

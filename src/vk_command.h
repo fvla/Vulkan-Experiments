@@ -98,7 +98,7 @@ public:
         {
             try
             {
-                VK_CHECK(wait());
+                std::ignore = wait();
                 commandBuffer_->reset(vk::CommandBufferResetFlagBits::eReleaseResources);
             }
             catch (...) {}
@@ -171,7 +171,7 @@ class VulkanCommandPool
     std::shared_ptr<detail::VulkanCommandPoolImpl> commandPoolImpl_;
 public:
     VulkanCommandPool() noexcept {}
-    [[gsl::suppress(r.11)]]
+    GSL_SUPPRESS(r.11)
     VulkanCommandPool(const vk::Device& device, size_t bufferCount, VulkanQueueInfo queueInfo)
         : commandPoolImpl_(new detail::VulkanCommandPoolImpl(device, bufferCount, queueInfo))
     {}

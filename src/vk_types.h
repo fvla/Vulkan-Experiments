@@ -118,11 +118,11 @@ concept Feature = requires
 {
     typename T::Dependencies;
 
-    require_constexpr<T::instanceExtensions>;
+    as_constexpr(T::instanceExtensions);
     ArrayOf<decltype(T::instanceExtensions), const char*>;
-    require_constexpr<T::deviceExtensions>;
+    as_constexpr(T::deviceExtensions);
     ArrayOf<decltype(T::deviceExtensions), const char*>;
-    require_constexpr<T::validationLayers>;
+    as_constexpr(T::validationLayers);
     ArrayOf<decltype(T::validationLayers), const char*>;
 };
 
@@ -262,9 +262,12 @@ struct FatalError : std::runtime_error
 
 struct VulkanQueueInfo
 {
-    uint32_t familyIndex = 0;
-    uint32_t index = 0;
+    uint32_t familyIndex;
+    uint32_t index;
     vk::Queue queue;
+
+    VulkanQueueInfo(uint32_t familyIndex_, uint32_t index_, vk::Queue queue_) noexcept
+        : familyIndex(familyIndex_), index(index_), queue(queue_) {}
 };
 
 struct VertexInfo

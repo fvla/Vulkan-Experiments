@@ -68,7 +68,7 @@ if(MSVC)
     set_target_properties(vulkan-test PROPERTIES
         VS_GLOBAL_RunCodeAnalysis false
         VS_GLOBAL_EnableMicrosoftCodeAnalysis true
-        VS_GLOBAL_EnableClangTidyCodeAnalysis false
+        VS_GLOBAL_EnableClangTidyCodeAnalysis true
         VS_GLOBAL_CodeAnalysisRuleSet AllRules.ruleset
     )
     target_compile_options(vulkan-test PRIVATE /analyze:external-)

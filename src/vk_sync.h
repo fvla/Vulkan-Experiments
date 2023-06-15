@@ -30,7 +30,7 @@ private:
     vk::UniqueSemaphore semaphore_;
     constexpr static auto semaphoreTypeInfo_ = vk::SemaphoreTypeCreateInfo(vk::SemaphoreType::eTimeline);
 
-    vk::Result wait(uint64_t timeout) const { return device_.waitSemaphores({ {}, *semaphore_ }, timeout); }
+    [[nodiscard]] vk::Result wait(uint64_t timeout) const { return device_.waitSemaphores({ {}, *semaphore_ }, timeout); }
 public:
     VulkanTimelineSemaphore(const vk::Device& device) :
         device_(device), semaphore_(device.createSemaphoreUnique({ {}, &semaphoreTypeInfo_ }))
@@ -41,8 +41,8 @@ public:
     VulkanTimelineSemaphore& operator=(VulkanTimelineSemaphore&&) = default;
 
     const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
-    void wait(std::chrono::nanoseconds timeout) const { wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
-    void wait() const { wait(std::chrono::nanoseconds::max()); }
+    [[nodiscard]] vk::Result wait(std::chrono::nanoseconds timeout) const { return wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
+    [[nodiscard]] vk::Result wait() const { return wait(std::chrono::nanoseconds::max()); }
     uint64_t counter() const { device_.getSemaphoreCounterValue(*semaphore_); }
     void signal(uint64_t value) const { device_.signalSemaphore({ *semaphore_, value }); }
 };
@@ -54,7 +54,7 @@ private:
     vk::Device device_;
     vk::UniqueFence fence_;
 
-    vk::Result wait(uint64_t timeout) const { return device_.waitForFences({ *fence_ }, true, timeout); }
+    [[nodiscard]] vk::Result wait(uint64_t timeout) const { return device_.waitForFences({ *fence_ }, true, timeout); }
 public:
     VulkanFence(const vk::Device& device)
         : device_(device), fence_(device.createFenceUnique({}))
