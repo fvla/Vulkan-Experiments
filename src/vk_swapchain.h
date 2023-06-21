@@ -30,7 +30,7 @@ public:
                 break;
             }
         auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
-        uint32_t imageCount = surfaceCapabilities.minImageCount + 1;
+        uint32_t imageCount = 2;
         if (surfaceCapabilities.maxImageCount != 0)
             imageCount = std::min(imageCount, surfaceCapabilities.maxImageCount);
         const vk::SwapchainCreateInfoKHR swapchainInfo(

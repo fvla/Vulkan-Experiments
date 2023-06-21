@@ -73,6 +73,7 @@ class VulkanCommandBuffer
     std::shared_ptr<detail::VulkanCommandPoolImpl> commandPool_;
     vk::UniqueCommandBuffer commandBuffer_;
     VulkanFence<> fence_;
+    bool submitted_ = false;
 
     template <VulkanCommandRecorder Recorder, vk::CommandBufferUsageFlags flags>
     void record_(Recorder recorder)
@@ -108,6 +109,7 @@ public:
 
     void submitTo(const vk::Queue& queue, vk::SubmitInfo submitInfo = {})
     {
+        submitted_ = true;
         queue.submit(submitInfo.setCommandBuffers(*commandBuffer_), fence_.get());
     }
     template <VulkanCommandRecorder Recorder>
@@ -142,27 +144,31 @@ public:
         });
     }
 
-    [[nodiscard]] vk::Result wait() const { return fence_.wait(); }
-    [[nodiscard]] vk::Result wait(std::chrono::nanoseconds timeout) const { return fence_.wait(timeout); }
+    [[nodiscard]] vk::Result wait() const { return submitted_ ? fence_.wait() : vk::Result::eSuccess; }
+    [[nodiscard]] vk::Result wait(std::chrono::nanoseconds timeout) const { return submitted_ ? fence_.wait(timeout) : vk::Result::eSuccess; }
 private:
-    /* You never want to call reset without waiting first. */
-    void reset() const { fence_.reset(); }
+    /* Private because you never want to call reset without waiting first. */
+    void reset()
+    {
+        if (fence_.status() == vk::Result::eSuccess)
+        {
+            fence_.reset();
+            submitted_ = false;
+        }
+    }
 public:
-    [[nodiscard]] vk::Result waitAndReset() const
+    [[nodiscard]] vk::Result waitAndReset()
     {
         const vk::Result result = wait();
         reset();
         return result;
     }
-    [[nodiscard]] vk::Result waitAndReset(std::chrono::nanoseconds timeout) const
+    [[nodiscard]] vk::Result waitAndReset(std::chrono::nanoseconds timeout)
     {
         const vk::Result result = wait(timeout);
         reset();
         return result;
     }
-
-    /* TODO: Stop breaking encapsulation! */
-    const vk::CommandBuffer& get() const noexcept { return *commandBuffer_; }
 };
 
 /* Note: only handles primary command buffers. */

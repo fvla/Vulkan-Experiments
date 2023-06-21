@@ -42,8 +42,8 @@ public:
     TrianglePipeline(const vk::PhysicalDevice& physicalDevice, const vk::Device& device,
                      VulkanCommandPool& commandPool, const vk::Pipeline& pipeline,
                      const VulkanQueueInfo& queueInfo, gsl::span<vk::Viewport> viewports, gsl::span<vk::Rect2D> scissors) :
-        imageReadySemaphore_(device), renderFinishedSemaphore_(device), commandPool_(commandPool),
-        vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_)),
+        imageReadySemaphore_(device), renderFinishedSemaphore_(device),
+        vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_)), commandPool_(commandPool),
         commandBuffer_(commandPool.checkOut()), pipeline_(pipeline), viewports_(viewports), scissors_(scissors)
     {
         VulkanBuffer<eTransferSrc, VulkanBufferType::Staging> stagingBuffer(physicalDevice, device, vertexBuffer_.size());
@@ -65,7 +65,7 @@ public:
         VK_CHECK(commandBuffer_.waitAndReset());
 
         {
-            const vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, commandBuffer_.get(), renderFinishedSemaphore_.get());
+            const vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, {}, renderFinishedSemaphore_.get());
             commandBuffer_.submitTo(queue, submitInfo);
         }
         {

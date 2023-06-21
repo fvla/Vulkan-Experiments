@@ -229,6 +229,7 @@ void VulkanEngine::resetSurface()
 
 void VulkanEngine::recreateSwapchain()
 {
+    graphicsQueues_.back().queue.waitIdle();
     swapchain_.reset();
     resetSurface();
     viewports_ = { vk::Viewport(0.0f, 0.0f, static_cast<float>(windowExtent_.width), static_cast<float>(windowExtent_.height), 0.0f, 1.0f) };
@@ -239,6 +240,7 @@ void VulkanEngine::recreateSwapchain()
         const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
         pipeline.record(renderPassInfo);
     }
+    frameNumber_ = 0;
 }
 
 void VulkanEngine::draw()
