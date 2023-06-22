@@ -5,11 +5,19 @@
 #include "vk_command.h"
 #include "vk_swapchain.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <functional>
 #include <memory>
 #include <optional>
 
 struct SDL_Window;
+
+struct VertexPushConstants
+{
+    glm::mat4 renderMatrix;
+};
 
 /* This class contains the main drawing logic. It's a mess; need to abstract it better
    once I understand the program structure better. This level of dependency injection
@@ -25,6 +33,7 @@ class TrianglePipeline
     VulkanCommandPool& commandPool_;
     VulkanCommandBuffer commandBuffer_;
     /* TODO: Move pipeline initialization into a new class "PipelineCore" instead of passing a reference. */
+    const vk::PipelineLayout& pipelineLayout_;
     const vk::Pipeline& pipeline_;
     /* TODO: viewports and scissors should be owned by the pipeline or pipeline core. */
     gsl::span<vk::Viewport> viewports_;
@@ -40,11 +49,11 @@ class TrianglePipeline
     });
 public:
     TrianglePipeline(const vk::PhysicalDevice& physicalDevice, const vk::Device& device,
-                     VulkanCommandPool& commandPool, const vk::Pipeline& pipeline,
+                     VulkanCommandPool& commandPool, const vk::PipelineLayout& pipelineLayout, const vk::Pipeline& pipeline,
                      const VulkanQueueInfo& queueInfo, gsl::span<vk::Viewport> viewports, gsl::span<vk::Rect2D> scissors) :
         imageReadySemaphore_(device), renderFinishedSemaphore_(device),
         vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_)), commandPool_(commandPool),
-        commandBuffer_(commandPool.checkOut()), pipeline_(pipeline), viewports_(viewports), scissors_(scissors)
+        commandBuffer_(commandPool.checkOut()), pipelineLayout_(pipelineLayout), pipeline_(pipeline), viewports_(viewports), scissors_(scissors)
     {
         VulkanBuffer<eTransferSrc, VulkanBufferType::Staging> stagingBuffer(physicalDevice, device, vertexBuffer_.size());
         stagingBuffer.copyFrom(gsl::span(vertexBufferArray_));
@@ -74,14 +83,32 @@ public:
         }
     }
 
-    void record(const vk::RenderPassBeginInfo& renderPassInfo)
+    [[nodiscard]] vk::Result wait() const { return commandBuffer_.wait(); }
+
+    void record(const vk::RenderPassBeginInfo& renderPassInfo, uint64_t frameNumber)
     {
-        commandBuffer_.record(renderPassInfo,
-                              [this](const auto& commandBuffer) { recordTriangleCommand(commandBuffer); });
+        commandBuffer_.record(
+            renderPassInfo,
+            [this, frameNumber](const auto& commandBuffer)
+            {
+                recordTriangleCommand(commandBuffer, frameNumber);
+            }
+        );
     }
 private:
-    void recordTriangleCommand(const vk::CommandBuffer& commandBuffer)
+    void recordTriangleCommand(const vk::CommandBuffer& commandBuffer, uint64_t frameNumber)
     {
+        glm::vec3 cameraPosition = { 0.0f,-0.1f,-2.0f };
+
+        glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPosition);
+        glm::mat4 projection = glm::perspective(glm::radians(90.f), viewports_[0].width / viewports_[0].height, 0.1f, 20.0f);
+        glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(frameNumber * 2.0f), glm::vec3(0, 1, 0));
+
+        VertexPushConstants constants;
+        constants.renderMatrix = projection * view * model;
+        using enum vk::ShaderStageFlagBits;
+        commandBuffer.pushConstants<VertexPushConstants>(pipelineLayout_, eVertex, 0, constants);
+
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_);
         commandBuffer.setViewport(0, viewports_);
         commandBuffer.setScissor(0, scissors_);

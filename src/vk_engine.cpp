@@ -177,11 +177,12 @@ VulkanEngine::VulkanEngine()
         const auto& vertexInputInfo     = vertexInfo.info;
         const auto inputAssemblyInfo    = vk::PipelineInputAssemblyStateCreateInfo({}, vk::PrimitiveTopology::eTriangleList);
         const auto viewportInfo         = vk::PipelineViewportStateCreateInfo({}, viewports_, scissors_);
-        const auto rasterizationInfo    = vk::PipelineRasterizationStateCreateInfo({}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
+        const auto rasterizationInfo    = vk::PipelineRasterizationStateCreateInfo({}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone,
                                                                                    vk::FrontFace::eClockwise, false, {}, {}, {}, 1.0f);
         const auto multisampleInfo      = vk::PipelineMultisampleStateCreateInfo({}, vk::SampleCountFlagBits::e1, false, 1.0f, nullptr, false, false);
         const auto colorBlendInfo       = vk::PipelineColorBlendStateCreateInfo({}, false, {}, colorBlendAttachments);
-        const auto pipelineLayoutInfo   = vk::PipelineLayoutCreateInfo();
+        const auto vertexPushConstant   = vk::PushConstantRange(vk::ShaderStageFlagBits::eVertex, 0, sizeof(VertexPushConstants));
+        const auto pipelineLayoutInfo   = vk::PipelineLayoutCreateInfo({}, {}, vertexPushConstant);
         pipelineLayout_ = device_->createPipelineLayoutUnique(pipelineLayoutInfo);
 
         const auto graphicsPipelineInfo       = vk::GraphicsPipelineCreateInfo({}, shaderStages, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo,
@@ -206,9 +207,7 @@ VulkanEngine::VulkanEngine()
         commandPool_ = VulkanCommandPool(*device_, 8, graphicsQueues_.back());
         for (size_t i = 0; i < swapchain_->getFramebufferCount(); i++)
         {
-            trianglePipelines_.emplace_back(physicalDevice_, *device_, commandPool_, *pipeline_, graphicsQueues_.back(), viewports_, scissors_);
-            const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
-            trianglePipelines_.back().record(renderPassInfo);
+            trianglePipelines_.emplace_back(physicalDevice_, *device_, commandPool_, *pipelineLayout_, *pipeline_, graphicsQueues_.back(), viewports_, scissors_);
         }
     }
 }
@@ -235,17 +234,18 @@ void VulkanEngine::recreateSwapchain()
     viewports_ = { vk::Viewport(0.0f, 0.0f, static_cast<float>(windowExtent_.width), static_cast<float>(windowExtent_.height), 0.0f, 1.0f) };
     scissors_ = { vk::Rect2D({ 0, 0 }, windowExtent_) };
     swapchain_.emplace(physicalDevice_, *device_, *renderPass_, *surface_, surfaceFormat_, windowExtent_);
-    for (auto [i, pipeline] : zip(iota_view<size_t>(), trianglePipelines_))
-    {
-        const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(i), vk::Rect2D({}, windowExtent_), clearValues_);
-        pipeline.record(renderPassInfo);
-    }
     frameNumber_ = 0;
 }
 
 void VulkanEngine::draw()
 {
-    trianglePipelines_.at(frameNumber_ % trianglePipelines_.size()).run(*swapchain_, graphicsQueues_.back().queue);
+    const auto pipelineIndex = frameNumber_ % trianglePipelines_.size();
+    auto& pipeline = trianglePipelines_.at(pipelineIndex);
+
+    const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(pipelineIndex), vk::Rect2D({}, windowExtent_), clearValues_);
+    VK_CHECK(pipeline.wait());
+    pipeline.record(renderPassInfo, frameNumber_);
+    pipeline.run(*swapchain_, graphicsQueues_.back().queue);
     frameNumber_++;
 }
 
@@ -253,10 +253,8 @@ void VulkanEngine::run()
 {
     bool bQuit = false;
 
-    //main loop
     while (!bQuit)
     {
-        //Handle events on queue
         for (SDL_Event e{ 0 }; SDL_PollEvent(&e) != 0; )
         {
             switch (e.type)
@@ -279,7 +277,6 @@ void VulkanEngine::run()
             default:
                 break;
             }
-            //close the window when user clicks the X button or alt-f4s
             if (e.type == SDL_QUIT) bQuit = true;
         }
 
