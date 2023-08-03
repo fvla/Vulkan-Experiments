@@ -8,9 +8,9 @@
 #include <vector>
 
 template <typename T>
-concept VulkanCommandRecorder = requires(T recorder)
+concept VulkanCommandRecorder = requires(T recorder, vk::CommandBuffer commandBuffer)
 {
-    { recorder(std::declval<vk::CommandBuffer>()) } -> std::same_as<void>;
+    { recorder(commandBuffer) } -> std::same_as<void>;
 };
 
 class VulkanCommandPool;
@@ -75,8 +75,8 @@ class VulkanCommandBuffer
     VulkanFence<> fence_;
     bool submitted_ = false;
 
-    template <VulkanCommandRecorder Recorder, vk::CommandBufferUsageFlags flags>
-    void record_(Recorder recorder)
+    template <vk::CommandBufferUsageFlags flags>
+    void record_(VulkanCommandRecorder auto&& recorder)
     {
         commandBuffer_->begin({ vk::CommandBufferUsageFlags(flags) });
         recorder(*commandBuffer_);
@@ -112,31 +112,27 @@ public:
         submitted_ = true;
         queue.submit(submitInfo.setCommandBuffers(*commandBuffer_), fence_.get());
     }
-    template <VulkanCommandRecorder Recorder>
-    void record(Recorder recorder)
+    void record(VulkanCommandRecorder auto&& recorder)
     {
-        record_<Recorder, vk::CommandBufferUsageFlags{}>(recorder);
+        record_<vk::CommandBufferUsageFlags{}>(recorder);
     }
-    template <VulkanCommandRecorder Recorder>
-    void record(const vk::RenderPassBeginInfo& renderPassInfo, Recorder recorder)
+    void record(const vk::RenderPassBeginInfo& renderPassInfo, VulkanCommandRecorder auto&& recorder)
     {
-        record([&](const vk::CommandBuffer& commandBuffer)
+        record([&renderPassInfo, recorder](const vk::CommandBuffer& commandBuffer)
         {
             commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
             recorder(commandBuffer);
             commandBuffer.endRenderPass();
         });
     }
-    template <VulkanCommandRecorder Recorder>
-    void recordOnce(Recorder recorder)
+    void recordOnce(VulkanCommandRecorder auto&& recorder)
     {
         using enum vk::CommandBufferUsageFlagBits;
-        record_<Recorder, eOneTimeSubmit>(recorder);
+        record_<eOneTimeSubmit>(recorder);
     }
-    template <VulkanCommandRecorder Recorder>
-    void recordOnce(const vk::RenderPassBeginInfo& renderPassInfo, Recorder recorder)
+    void recordOnce(const vk::RenderPassBeginInfo& renderPassInfo, VulkanCommandRecorder auto&& recorder)
     {
-        recordOnce([&](const vk::CommandBuffer& commandBuffer)
+        recordOnce([&renderPassInfo, recorder](const vk::CommandBuffer& commandBuffer)
         {
             commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
             recorder(commandBuffer);
