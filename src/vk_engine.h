@@ -3,6 +3,7 @@
 #include "vk_types.h"
 #include "vk_buffer.h"
 #include "vk_command.h"
+#include "vk_stream.h"
 #include "vk_swapchain.h"
 
 #include <glm/glm.hpp>
@@ -24,14 +25,11 @@ struct VertexPushConstants
    is unacceptable. */
 class TrianglePipeline
 {
-    VulkanSemaphore<> imageReadySemaphore_;
-    VulkanSemaphore<> renderFinishedSemaphore_;
+    VulkanGraphicsStream stream_;
 
     using enum vk::BufferUsageFlagBits;
     VulkanBuffer<eVertexBuffer | eTransferDst, VulkanBufferType::DeviceLocal> vertexBuffer_;
 
-    VulkanCommandPool& commandPool_;
-    VulkanCommandBuffer commandBuffer_;
     /* TODO: Move pipeline initialization into a new class "PipelineCore" instead of passing a reference. */
     const vk::PipelineLayout& pipelineLayout_;
     const vk::Pipeline& pipeline_;
@@ -39,81 +37,57 @@ class TrianglePipeline
     gsl::span<vk::Viewport> viewports_;
     gsl::span<vk::Rect2D> scissors_;
 
-    constexpr static std::array<vk::PipelineStageFlags, 1> waitStages_
-        = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
-
     constexpr static std::array vertexBufferArray_ = std::to_array<SimpleVertex>({
         {{ 0.0f,-0.5f, 0.0f},{1.0f,0.0f,0.0f}},
         {{ 0.5f, 0.5f, 0.0f},{0.0f,1.0f,0.0f}},
         {{-0.5f, 0.5f, 0.0f},{0.0f,0.0f,1.0f}},
     });
+
+    auto triangleCommandRecorder(uint64_t frameNumber)
+    {
+        return [&, frameNumber](const vk::CommandBuffer& commandBuffer)
+        {
+            glm::vec3 cameraPosition = { 0.0f,-0.1f,-2.0f };
+
+            glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPosition);
+            glm::mat4 projection = glm::perspective(glm::radians(90.f), viewports_[0].width / viewports_[0].height, 0.1f, 20.0f);
+            glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(frameNumber * 2.0f), glm::vec3(0, 1, 0));
+
+            VertexPushConstants constants;
+            constants.renderMatrix = projection * view * model;
+            using enum vk::ShaderStageFlagBits;
+            commandBuffer.pushConstants<VertexPushConstants>(pipelineLayout_, eVertex, 0, constants);
+
+            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_);
+            commandBuffer.setViewport(0, viewports_);
+            commandBuffer.setScissor(0, scissors_);
+            commandBuffer.bindVertexBuffers(0, vertexBuffer_.get(), vk::DeviceSize{ 0 });
+            commandBuffer.draw(gsl::narrow<uint32_t>(vertexBuffer_.size()), 1, 0, 0);
+        };
+    }
 public:
     TrianglePipeline(const vk::PhysicalDevice& physicalDevice, const vk::Device& device,
                      VulkanCommandPool& commandPool, const vk::PipelineLayout& pipelineLayout, const vk::Pipeline& pipeline,
                      const VulkanQueueInfo& queueInfo, gsl::span<vk::Viewport> viewports, gsl::span<vk::Rect2D> scissors) :
-        imageReadySemaphore_(device), renderFinishedSemaphore_(device),
-        vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_)), commandPool_(commandPool),
-        commandBuffer_(commandPool.checkOut()), pipelineLayout_(pipelineLayout), pipeline_(pipeline), viewports_(viewports), scissors_(scissors)
+        stream_(device, commandPool), vertexBuffer_(physicalDevice, device, sizeof(vertexBufferArray_)),
+        pipelineLayout_(pipelineLayout), pipeline_(pipeline), viewports_(viewports), scissors_(scissors)
     {
-        VulkanBuffer<eTransferSrc, VulkanBufferType::Staging> stagingBuffer(physicalDevice, device, vertexBuffer_.size());
+        const VulkanBuffer<eTransferSrc, VulkanBufferType::Staging> stagingBuffer(physicalDevice, device, vertexBuffer_.size());
         stagingBuffer.copyFrom(gsl::span(vertexBufferArray_));
         {
-            auto commandBuffer = commandPool_.checkOut();
-            commandBuffer.recordOnce(recordCopyBuffers(stagingBuffer, vertexBuffer_));
-            commandBuffer.submitTo(queueInfo.queue);
+            auto commandRecorder = recordCopyBuffers(stagingBuffer, vertexBuffer_);
+            stream_.submitWork(queueInfo.queue, commandRecorder);
         }
     }
-    TrianglePipeline(const TrianglePipeline&) = delete;
-    TrianglePipeline& operator=(const TrianglePipeline&) = delete;
-    TrianglePipeline(TrianglePipeline&& other) = default;
-    TrianglePipeline& operator=(TrianglePipeline&&) = default;
+    ~TrianglePipeline() { stream_.synchronize(); }
 
-    void run(const VulkanSwapchain<>& swapchain, const vk::Queue& queue)
+    void run(const VulkanSwapchain<>& swapchain, const vk::Queue& queue, const vk::RenderPassBeginInfo& renderPassInfo, uint64_t frameNumber)
     {
-        const uint32_t imageIndex = swapchain.acquireNextImage(imageReadySemaphore_.get());
-        VK_CHECK(commandBuffer_.waitAndReset());
-
-        {
-            const vk::SubmitInfo submitInfo(imageReadySemaphore_.get(), waitStages_, {}, renderFinishedSemaphore_.get());
-            commandBuffer_.submitTo(queue, submitInfo);
-        }
-        {
-            const vk::PresentInfoKHR presentInfo(renderFinishedSemaphore_.get(), swapchain.getSwapchain(), imageIndex);
-            VK_CHECK(queue.presentKHR(presentInfo));
-        }
-    }
-
-    [[nodiscard]] vk::Result wait() const { return commandBuffer_.wait(); }
-
-    void record(const vk::RenderPassBeginInfo& renderPassInfo, uint64_t frameNumber)
-    {
-        commandBuffer_.record(
-            renderPassInfo,
-            [this, frameNumber](const auto& commandBuffer)
-            {
-                recordTriangleCommand(commandBuffer, frameNumber);
-            }
-        );
-    }
-private:
-    void recordTriangleCommand(const vk::CommandBuffer& commandBuffer, uint64_t frameNumber)
-    {
-        glm::vec3 cameraPosition = { 0.0f,-0.1f,-2.0f };
-
-        glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPosition);
-        glm::mat4 projection = glm::perspective(glm::radians(90.f), viewports_[0].width / viewports_[0].height, 0.1f, 20.0f);
-        glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(frameNumber * 2.0f), glm::vec3(0, 1, 0));
-
-        VertexPushConstants constants;
-        constants.renderMatrix = projection * view * model;
-        using enum vk::ShaderStageFlagBits;
-        commandBuffer.pushConstants<VertexPushConstants>(pipelineLayout_, eVertex, 0, constants);
-
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_);
-        commandBuffer.setViewport(0, viewports_);
-        commandBuffer.setScissor(0, scissors_);
-        commandBuffer.bindVertexBuffers(0, vertexBuffer_.get(), vk::DeviceSize{0});
-        commandBuffer.draw(gsl::narrow<uint32_t>(vertexBuffer_.size()), 1, 0, 0);
+        stream_.synchronize();
+        const uint32_t imageIndex = stream_.acquireNextImage(queue, swapchain);
+        auto commandRecorder = triangleCommandRecorder(frameNumber);
+        stream_.submitWork(queue, renderPassInfo, commandRecorder);
+        stream_.present(queue, swapchain, imageIndex);
     }
 };
 
@@ -138,7 +112,7 @@ class VulkanEngine : RequiresFeature<SDLFeature>
 
     VulkanCommandPool commandPool_;
 
-    std::vector<TrianglePipeline> trianglePipelines_;
+    std::deque<TrianglePipeline> trianglePipelines_;
 
     uint64_t frameNumber_{ 0 };
 

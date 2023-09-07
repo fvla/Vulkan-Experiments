@@ -30,7 +30,7 @@ private:
     vk::UniqueSemaphore semaphore_;
     constexpr static auto semaphoreTypeInfo_ = vk::SemaphoreTypeCreateInfo(vk::SemaphoreType::eTimeline);
 
-    [[nodiscard]] vk::Result wait(uint64_t timeout) const { return device_.waitSemaphores({ {}, *semaphore_ }, timeout); }
+    [[nodiscard]] vk::Result wait(uint64_t value, uint64_t timeout) const { return device_.waitSemaphores(vk::SemaphoreWaitInfo{ {}, *semaphore_, value }, timeout); }
 public:
     VulkanTimelineSemaphore(const vk::Device& device) :
         device_(device), semaphore_(device.createSemaphoreUnique({ {}, &semaphoreTypeInfo_ }))
@@ -41,8 +41,8 @@ public:
     VulkanTimelineSemaphore& operator=(VulkanTimelineSemaphore&&) = default;
 
     const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
-    [[nodiscard]] vk::Result wait(std::chrono::nanoseconds timeout) const { return wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
-    [[nodiscard]] vk::Result wait() const { return wait(std::chrono::nanoseconds::max()); }
+    [[nodiscard]] vk::Result wait(uint64_t value, std::chrono::nanoseconds timeout) const { return wait(value, gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
+    [[nodiscard]] vk::Result wait(uint64_t value) const { return wait(value, std::chrono::nanoseconds::max()); }
     uint64_t counter() const { device_.getSemaphoreCounterValue(*semaphore_); }
     void signal(uint64_t value) const { device_.signalSemaphore({ *semaphore_, value }); }
 };

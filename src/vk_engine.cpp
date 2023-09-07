@@ -37,7 +37,7 @@ VulkanEngine::VulkanEngine()
     }
     // Instance
     {
-        const auto appInfo = vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_0);
+        const auto appInfo = vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_3);
         checkValidationLayers();
         if constexpr (vk::enableValidationLayers)
         {
@@ -121,7 +121,12 @@ VulkanEngine::VulkanEngine()
         for (auto extension : AvailableFeatures::deviceExtensions)
             std::cout << "\t" << extension << std::endl;
 
-        const vk::DeviceCreateInfo deviceInfo({}, queueInfos, {}, AvailableFeatures::deviceExtensions);
+        vk::PhysicalDeviceVulkan12Features features12;
+        features12.timelineSemaphore = true;
+        vk::PhysicalDeviceVulkan13Features features13;
+        features13.synchronization2 = true;
+        features13.pNext = &features12;
+        const vk::DeviceCreateInfo deviceInfo({}, queueInfos, {}, AvailableFeatures::deviceExtensions, {}, &features13);
         device_ = physicalDevice_.createDeviceUnique(deviceInfo);
         for (auto& queueInfo : queueInfos)
             for (uint32_t queueIndex = 0; queueIndex < queueInfo.queueCount; queueIndex++)
@@ -243,9 +248,7 @@ void VulkanEngine::draw()
     auto& pipeline = trianglePipelines_.at(pipelineIndex);
 
     const vk::RenderPassBeginInfo renderPassInfo(*renderPass_, swapchain_->getFramebuffer(pipelineIndex), vk::Rect2D({}, windowExtent_), clearValues_);
-    VK_CHECK(pipeline.wait());
-    pipeline.record(renderPassInfo, frameNumber_);
-    pipeline.run(*swapchain_, graphicsQueues_.back().queue);
+    pipeline.run(*swapchain_, graphicsQueues_.back().queue, renderPassInfo, frameNumber_);
     frameNumber_++;
 }
 

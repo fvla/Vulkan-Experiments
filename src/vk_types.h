@@ -39,7 +39,40 @@
 #define VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 #endif
 
-namespace rv = std::ranges::views;
+/* https://stackoverflow.com/questions/58808030/range-view-to-stdvector */
+#if __cplusplus < __cpp_lib_ranges_to_container
+namespace std
+{
+
+namespace ranges
+{
+
+namespace detail {
+// Type acts as a tag to find the correct operator| overload
+template <typename C>
+struct to_helper {};
+
+// This actually does the work
+template <typename Container, range R>
+    requires std::convertible_to<range_value_t<R>, typename Container::value_type>
+Container operator|(R&& r, to_helper<Container>) {
+    return Container{ r.begin(), r.end() };
+}
+}
+
+// Couldn't find an concept for container, however a
+// container is a range, but not a view.
+template <range Container>
+    requires (!view<Container>)
+auto to() {
+    return detail::to_helper<Container>{};
+}
+
+}
+
+}
+#endif
+
 
 namespace vk
 {
@@ -237,6 +270,7 @@ using AvailableFeatures = FeatureList<
     PhysicalDevicePropertiesFeature,
     FenceFeature,
     SemaphoreFeature,
+    TimelineSemaphoreFeature,
     SwapchainFeature,
     ValidationLayerFeatureIfEnabled
 >;

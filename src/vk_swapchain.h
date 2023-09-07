@@ -67,7 +67,7 @@ public:
         return resultValue.value;
     }
     const vk::SwapchainKHR& getSwapchain() const noexcept { return *swapchain_; }
-    const size_t getFramebufferCount() const noexcept { return swapchainFramebuffers_.size(); }
-    const size_t size() const noexcept { return swapchainFramebuffers_.size(); }
+    size_t getFramebufferCount() const noexcept { return swapchainFramebuffers_.size(); }
+    size_t size() const noexcept { return swapchainFramebuffers_.size(); }
     const vk::Framebuffer& getFramebuffer(size_t index) const { return *swapchainFramebuffers_.at(index); }
 };

@@ -16,7 +16,7 @@ inline void checkValidationLayers()
             availableLayers.insert(std::string(layer.layerName.data()));
         auto badLayers =
             AvailableFeatures::validationLayers
-            | rv::filter([&availableLayers](const char* str) { return !availableLayers.contains(str); });
+            | std::views::filter([&availableLayers](const char* str) { return !availableLayers.contains(str); });
         if (!badLayers.empty())
         {
             std::stringstream ss("The following validation layers are not available: ");
