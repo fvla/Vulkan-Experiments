@@ -8,8 +8,7 @@
 
 struct SDL_Window;
 
-template <Void V = void>
-class VulkanSwapchain : RequiresFeature<SwapchainFeature, V>
+class VulkanSwapchain
 {
     vk::Device device_;
     vk::UniqueSwapchainKHR swapchain_;

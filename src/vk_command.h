@@ -72,7 +72,7 @@ class VulkanCommandBuffer
 
     std::shared_ptr<detail::VulkanCommandPoolImpl> commandPool_;
     vk::UniqueCommandBuffer commandBuffer_;
-    VulkanFence<> fence_;
+    VulkanFence fence_;
     bool submitted_ = false;
 
     template <vk::CommandBufferUsageFlags flags>

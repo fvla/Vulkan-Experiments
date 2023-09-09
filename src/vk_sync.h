@@ -5,8 +5,7 @@
 #include <chrono>
 #include <limits>
 
-template <Void V = void>
-class VulkanSemaphore : RequiresFeature<SemaphoreFeature, V>
+class VulkanSemaphore
 {
 private:
     vk::UniqueSemaphore semaphore_;
@@ -22,8 +21,7 @@ public:
     const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
 };
 
-template <Void V = void>
-class VulkanTimelineSemaphore : RequiresFeature<TimelineSemaphoreFeature, V>
+class VulkanTimelineSemaphore
 {
 private:
     vk::Device device_;
@@ -43,12 +41,11 @@ public:
     const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
     [[nodiscard]] vk::Result wait(uint64_t value, std::chrono::nanoseconds timeout) const { return wait(value, gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
     [[nodiscard]] vk::Result wait(uint64_t value) const { return wait(value, std::chrono::nanoseconds::max()); }
-    uint64_t counter() const { device_.getSemaphoreCounterValue(*semaphore_); }
+    uint64_t counter() const { return device_.getSemaphoreCounterValue(*semaphore_); }
     void signal(uint64_t value) const { device_.signalSemaphore({ *semaphore_, value }); }
 };
 
-template <Void V = void>
-class VulkanFence : RequiresFeature<FenceFeature, V>
+class VulkanFence
 {
 private:
     vk::Device device_;

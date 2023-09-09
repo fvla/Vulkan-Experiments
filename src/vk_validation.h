@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
+template <Feature Features>
 inline void checkValidationLayers()
 {
     if constexpr (vk::enableValidationLayers)
@@ -15,7 +16,7 @@ inline void checkValidationLayers()
         for (const auto& layer : availableLayers_vector)
             availableLayers.insert(std::string(layer.layerName.data()));
         auto badLayers =
-            AvailableFeatures::validationLayers
+            Features::validationLayers
             | std::views::filter([&availableLayers](const char* str) { return !availableLayers.contains(str); });
         if (!badLayers.empty())
         {

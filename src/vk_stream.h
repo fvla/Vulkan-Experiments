@@ -40,7 +40,7 @@ class VulkanStream
 
     VulkanCommandPool& commandPool_;
     std::optional<VulkanCommandBuffer> currentCommandBuffer_;
-    VulkanTimelineSemaphore<> semaphore_;
+    VulkanTimelineSemaphore semaphore_;
     uint64_t lastValue_ = 0;
 public:
     VulkanStream(const vk::Device& device, VulkanCommandPool& commandPool)
@@ -75,8 +75,8 @@ public:
 class VulkanGraphicsStream : public VulkanStream
 {
 private:
-    VulkanSemaphore<> acquireSemaphore_;
-    VulkanSemaphore<> presentSemaphore_;
+    VulkanSemaphore acquireSemaphore_;
+    VulkanSemaphore presentSemaphore_;
 public:
     VulkanGraphicsStream(const vk::Device& device, VulkanCommandPool& commandPool)
         : VulkanStream(device, commandPool), acquireSemaphore_(device), presentSemaphore_(device) {}
@@ -101,7 +101,7 @@ public:
     }
 
     /* TODO: Don't return raw, unencapsulated uint32_t to be later received by present(). */
-    uint32_t acquireNextImage(const vk::Queue& queue, const VulkanSwapchain<>& swapchain)
+    uint32_t acquireNextImage(const vk::Queue& queue, const VulkanSwapchain& swapchain)
     {
         const uint32_t imageIndex = swapchain.acquireNextImage(acquireSemaphore_.get());
 
@@ -113,7 +113,7 @@ public:
         return imageIndex;
     }
     
-    void present(const vk::Queue& queue, const VulkanSwapchain<>& swapchain, uint32_t imageIndex)
+    void present(const vk::Queue& queue, const VulkanSwapchain& swapchain, uint32_t imageIndex)
     {
         constexpr uint64_t presentSemaphoreValue = std::numeric_limits<uint64_t>::max(); // will be ignored since presentSemaphore isn't timeline
         const vk::TimelineSemaphoreSubmitInfo timelineSubmit(lastValue_, presentSemaphoreValue);

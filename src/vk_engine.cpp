@@ -12,6 +12,17 @@
 using std::ranges::iota_view;
 using std::views::zip;
 
+using AvailableFeatures = ValidatedFeatureList<
+    SurfaceFeature,
+    SDLFeature,
+    PhysicalDevicePropertiesFeature,
+    FenceFeature,
+    SemaphoreFeature,
+    TimelineSemaphoreFeature,
+    SwapchainFeature,
+    ValidationLayerFeatureIfEnabled
+>;
+
 VulkanEngine::VulkanEngine()
 {
     SDL_Init(SDL_INIT_VIDEO);
@@ -38,7 +49,7 @@ VulkanEngine::VulkanEngine()
     // Instance
     {
         const auto appInfo = vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_3);
-        checkValidationLayers();
+        checkValidationLayers<AvailableFeatures>();
         if constexpr (vk::enableValidationLayers)
         {
             std::cout << "Enabled validation layers:" << std::endl;

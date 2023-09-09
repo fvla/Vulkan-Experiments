@@ -81,7 +81,7 @@ public:
     }
     ~TrianglePipeline() { stream_.synchronize(); }
 
-    void run(const VulkanSwapchain<>& swapchain, const vk::Queue& queue, const vk::RenderPassBeginInfo& renderPassInfo, uint64_t frameNumber)
+    void run(const VulkanSwapchain& swapchain, const vk::Queue& queue, const vk::RenderPassBeginInfo& renderPassInfo, uint64_t frameNumber)
     {
         stream_.synchronize();
         const uint32_t imageIndex = stream_.acquireNextImage(queue, swapchain);
@@ -91,7 +91,7 @@ public:
     }
 };
 
-class VulkanEngine : RequiresFeature<SDLFeature>
+class VulkanEngine
 {
     vk::UniqueInstance instance_; // Vulkan library handle
     vk::DebugUtilsMessengerEXT debug_messenger_; // Vulkan debug output handle
@@ -102,7 +102,7 @@ class VulkanEngine : RequiresFeature<SDLFeature>
     vk::UniqueSurfaceKHR surface_;
     vk::SurfaceFormatKHR surfaceFormat_;
 
-    std::optional<VulkanSwapchain<>> swapchain_;
+    std::optional<VulkanSwapchain> swapchain_;
 
     vk::UniqueRenderPass renderPass_;
     vk::UniquePipelineLayout pipelineLayout_;

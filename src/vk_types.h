@@ -177,6 +177,11 @@ public:
     constexpr static std::array deviceExtensions = array_concat(Args::deviceExtensions...);
     constexpr static std::array validationLayers = array_concat(Args::validationLayers...);
 };
+template <Feature... Args>
+struct ValidatedFeatureList : FeatureList<Args...>
+{
+    static_assert(FeatureList<Args...>::template hasFeature<typename FeatureList<Args...>::Dependencies>, "Dependencies not all satisfied in ValidatedFeatureList");
+};
 
 struct EmptyFeature
 {
@@ -263,30 +268,6 @@ struct ValidationLayerFeature : EmptyFeature
 using ValidationLayerFeatureIfEnabled = std::conditional_t<
     vk::enableValidationLayers, ValidationLayerFeature, EmptyFeature
 >;
-
-using AvailableFeatures = FeatureList<
-    SurfaceFeature,
-    SDLFeature,
-    PhysicalDevicePropertiesFeature,
-    FenceFeature,
-    SemaphoreFeature,
-    TimelineSemaphoreFeature,
-    SwapchainFeature,
-    ValidationLayerFeatureIfEnabled
->;
-static_assert(AvailableFeatures::hasFeature<AvailableFeatures::Dependencies>, "Dependencies not all satisfied in AvailableFeatures");
-
-template <Feature T, Void V = void>
-struct RequiresFeature
-{
-    static_assert((Void<V>) && AvailableFeatures::hasFeature<T>);
-};
-
-template <Void V = void>
-class GLFWOutput : RequiresFeature<GLFWFeature, V>
-{
-
-};
 
 struct FatalError : std::runtime_error
 {
