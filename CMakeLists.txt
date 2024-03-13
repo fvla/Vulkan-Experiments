@@ -56,6 +56,7 @@ elseif(UNIX)
 else()
     message(FATAL_ERROR "Unsupported platform: CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
 endif()
+
 add_executable(vulkan-test ${SOURCES} ${HEADERS})
 add_dependencies(vulkan-test vulkan-shaders)
 add_custom_command(TARGET vulkan-test POST_BUILD
@@ -64,6 +65,7 @@ add_custom_command(TARGET vulkan-test POST_BUILD
 )
 target_include_directories(vulkan-test PRIVATE "src/")
 target_link_libraries(vulkan-test Vulkan::Vulkan SDL2::SDL2 SDL2::SDL2main SDL2::SDL2-static glm::glm Microsoft.GSL::GSL)
+target_precompile_headers(vulkan-test PRIVATE <vulkan/vulkan.hpp>)
 if(MSVC)
     set_target_properties(vulkan-test PROPERTIES
         VS_GLOBAL_RunCodeAnalysis false
