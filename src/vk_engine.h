@@ -110,7 +110,7 @@ class VulkanEngine
 
     vk::UniqueBuffer vertexBuffer_;
 
-    VulkanCommandPool commandPool_;
+    std::optional<VulkanCommandPool> commandPool_;
 
     std::deque<TrianglePipeline> trianglePipelines_;
 

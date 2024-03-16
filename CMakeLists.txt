@@ -24,7 +24,6 @@ include(FetchContent)
 FetchContent_Declare(GSL
     GIT_REPOSITORY "https://github.com/microsoft/GSL"
     GIT_TAG 1d036585ccea8a57dc5fdc84406181db3d1f3205
-    GIT_SHALLOW ON
 )
 FetchContent_MakeAvailable(GSL)
 
@@ -65,7 +64,11 @@ add_custom_command(TARGET vulkan-test POST_BUILD
 )
 target_include_directories(vulkan-test PRIVATE "src/")
 target_link_libraries(vulkan-test Vulkan::Vulkan SDL2::SDL2 SDL2::SDL2main SDL2::SDL2-static glm::glm Microsoft.GSL::GSL)
-target_precompile_headers(vulkan-test PRIVATE <vulkan/vulkan.hpp>)
+target_precompile_headers(vulkan-test
+    PRIVATE
+        <vulkan/vulkan.hpp>
+        <vulkan/vulkan_raii.hpp>
+)
 if(MSVC)
     set_target_properties(vulkan-test PROPERTIES
         VS_GLOBAL_RunCodeAnalysis false

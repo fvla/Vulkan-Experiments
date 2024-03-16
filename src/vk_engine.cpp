@@ -2,6 +2,8 @@
 #include "vk_validation.h"
 #include "vk_types.h"
 
+#include <vulkan/vulkan_raii.hpp>
+
 #include <SDL.h>
 #include <SDL_vulkan.h>
 
@@ -22,6 +24,99 @@ using AvailableFeatures = ValidatedFeatureList<
     SwapchainFeature,
     ValidationLayerFeatureIfEnabled
 >;
+
+//struct VulkanDevice
+//{
+//    vk::PhysicalDevice physicalDevice;
+//    vk::Device device;
+//    vk::Queue generalQueue;
+//    vk::Queue transferQueue;
+//};
+//
+//template <Feature Features>
+//class VulkanInstance
+//{
+//    vk::UniqueInstance instance_;
+//    std::vector<vk::UniqueDevice> internalDevices_;
+//    std::vector<VulkanDevice> devices_;
+//
+//    /* Not a default constructor to avoid warning on noexcept */
+//    VulkanInstance(std::monostate)
+//    {
+//        checkValidationLayers<Features>();
+//
+//        auto extensions = vk::enumerateInstanceExtensionProperties();
+//        std::cout << "Available instance extensions:" << std::endl;
+//        for (auto& extension : extensions)
+//            std::cout << "\t" << extension.extensionName << std::endl;
+//        if constexpr (vk::enableValidationLayers)
+//        {
+//            std::cout << "Enabled validation layers:" << std::endl;
+//            for (auto layer : Features::validationLayers)
+//                std::cout << "\t" << layer << std::endl;
+//        }
+//        else
+//            std::cout << "Validation layers disabled" << std::endl;
+//
+//        std::cout << "Enabled instance extensions:" << std::endl;
+//        for (auto extension : Features::instanceExtensions)
+//            std::cout << "\t" << extension << std::endl;
+//    }
+//public:
+//    VulkanInstance(const vk::ApplicationInfo& appInfo) :
+//        VulkanInstance(std::monostate),
+//        instance_(vk::createInstanceUnique(
+//            vk::InstanceCreateInfo{ {}, &appInfo, Features::validationLayers, Features::instanceExtensions }
+//        ))
+//    {
+//        auto physicalDevices = instance_->enumeratePhysicalDevices();
+//        for (vk::PhysicalDevice physicalDevice : physicalDevices)
+//        {
+//            if (!physicalDevice.getFeatures().geometryShader)
+//                continue;
+//
+//            VulkanDevice& deviceStruct = devices_.emplace_back();
+//            deviceStruct.physicalDevice = physicalDevice;
+//
+//            auto extensions = physicalDevice_.enumerateDeviceExtensionProperties();
+//            std::cout << "Available device extensions:" << std::endl;
+//            for (auto& extension : extensions)
+//                std::cout << "\t" << extension.extensionName << std::endl;
+//
+//            uint32_t generalQueueIndex = std::numeric_limits<uint32_t>::max();
+//            uint32_t transferQueueIndex = std::numeric_limits<uint32_t>::max();
+//            const auto queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
+//            for (uint32_t queueIndex = 0u; auto & queueFamily : queueFamilyProperties)
+//            {
+//                constexpr vk::QueueFlags generalQueueFlags =
+//                    vk::QueueFlagBits::eGraphics & vk::QueueFlagBits::eCompute & vk::QueueFlagBits::eTransfer;
+//                if (queueFamily.queueFlags & generalQueueFlags == generalQueueFlags)
+//                    generalQueueIndex = queueIndex;
+//                else if (queueFamily.queueFlags == vk::QueueFlagBits::eTransfer)
+//                    transferQueueIndex = queueIndex;
+//                queueIndex++;
+//            }
+//            assert(generalQueueIndex < queueFamilyProperties.size());
+//            assert(transferQueueIndex < queueFamilyProperties.size());
+//            const std::array queueInfos = std::to_array<vk::DeviceQueueCreateInfo>({
+//                { {}, generalQueueIndex,  1.0f },
+//                { {}, transferQueueIndex, 1.0f }
+//                });
+//
+//            vk::PhysicalDeviceVulkan12Features features12;
+//            features12.timelineSemaphore = true;
+//            vk::PhysicalDeviceVulkan13Features features13;
+//            features13.synchronization2 = true;
+//            features13.pNext = &features12;
+//            const vk::DeviceCreateInfo deviceInfo({}, queueInfos, {}, AvailableFeatures::deviceExtensions, {}, &features13);
+//
+//            internalDevices_.push_back(physicalDevice.createDeviceUnique(deviceInfo));
+//            deviceStruct.device = internalDevices_.back().get();
+//            deviceStruct.generalQueue = deviceStruct.device->getQueue(generalQueueIndex, 0u);
+//            deviceStruct.transferQueue = deviceStruct.device->getQueue(transferQueueIndex, 0u);
+//        }
+//    }
+//};
 
 VulkanEngine::VulkanEngine()
 {
@@ -73,8 +168,8 @@ VulkanEngine::VulkanEngine()
         {
             const auto deviceProperties = device.getProperties();
             const auto deviceFeatures = device.getFeatures();
-            if (!(deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && deviceFeatures.geometryShader))
-                return false;
+            /*if (!(deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && deviceFeatures.geometryShader))
+                return false;*/
             const auto queueFamilyProperties = device.getQueueFamilyProperties();
             for (uint32_t queueIndex = 0; const auto& queueFamily : queueFamilyProperties)
             {
@@ -213,17 +308,12 @@ VulkanEngine::VulkanEngine()
     {
         swapchain_.emplace(physicalDevice_, *device_, *renderPass_, *surface_, surfaceFormat_, windowExtent_);
     }
-    // Vertex and index buffers
-    {
-        /*vk::BufferCreateInfo vertexBufferInfo({}, sizeof(vertexBufferArray_), vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive, {});
-        vertexBuffer_ = device_->createBufferUnique(vertexBufferInfo);*/
-    }
     // Command pool and triangle pipeline
     {
         commandPool_ = VulkanCommandPool(*device_, 8, graphicsQueues_.back());
         for (size_t i = 0; i < swapchain_->getFramebufferCount(); i++)
         {
-            trianglePipelines_.emplace_back(physicalDevice_, *device_, commandPool_, *pipelineLayout_, *pipeline_, graphicsQueues_.back(), viewports_, scissors_);
+            trianglePipelines_.emplace_back(physicalDevice_, *device_, *commandPool_, *pipelineLayout_, *pipeline_, graphicsQueues_.back(), viewports_, scissors_);
         }
     }
 }

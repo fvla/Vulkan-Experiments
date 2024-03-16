@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 #include <glm/glm.hpp>
 
 #include <array>
@@ -85,7 +86,7 @@ constexpr bool enableValidationLayers = true;
 
 template <auto T>
 constexpr bool require_constexpr = true;
-consteval auto as_constexpr(auto x) { return x; }
+consteval auto as_constexpr(auto x) noexcept { return x; }
 
 template <typename T>
 concept Void = std::is_void_v<T>;
@@ -299,6 +300,8 @@ public:
     {}
 };
 
+#define VULKAN_offsetof(s, m) gsl::narrow<uint32_t>(offsetof(s, m))
+
 struct SimpleVertex
 {
     glm::vec3 position;
@@ -307,7 +310,7 @@ struct SimpleVertex
     static VertexInfo getVertexInputInfo()
     {
         return VertexInfo({ { 0, sizeof(SimpleVertex) } },
-                          { { 0, 0, vk::Format::eR32G32B32Sfloat, offsetof(SimpleVertex, position) },
-                            { 1, 0, vk::Format::eR32G32B32Sfloat, offsetof(SimpleVertex, color) } });
+                          { { 0, 0, vk::Format::eR32G32B32Sfloat, VULKAN_offsetof(SimpleVertex, position) },
+                            { 1, 0, vk::Format::eR32G32B32Sfloat, VULKAN_offsetof(SimpleVertex, color) } });
     }
 };

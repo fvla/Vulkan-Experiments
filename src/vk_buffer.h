@@ -14,7 +14,7 @@ enum class VulkanBufferType
     HostAccessible
 };
 
-consteval vk::MemoryPropertyFlags getMemoryFlags(VulkanBufferType type)
+consteval vk::MemoryPropertyFlags getMemoryFlags(VulkanBufferType type) noexcept
 {
     using enum VulkanBufferType;
     using enum vk::MemoryPropertyFlagBits;
