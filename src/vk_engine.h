@@ -3,6 +3,7 @@
 #include "vk_types.h"
 #include "vk_buffer.h"
 #include "vk_command.h"
+#include "vk_instance.h"
 #include "vk_stream.h"
 #include "vk_swapchain.h"
 
@@ -19,6 +20,8 @@ struct VertexPushConstants
 {
     glm::mat4 renderMatrix;
 };
+
+void runEngine();
 
 /* This class contains the main drawing logic. It's a mess; need to abstract it better
    once I understand the program structure better. This level of dependency injection
@@ -93,7 +96,10 @@ public:
 
 class VulkanEngine
 {
-    vk::UniqueInstance instance_; // Vulkan library handle
+    vk::Extent2D windowExtent_{ 1280 , 720 };
+    SDL_Window* window_{ nullptr };
+
+    VulkanInstance instance_; // Vulkan library handle
     vk::DebugUtilsMessengerEXT debug_messenger_; // Vulkan debug output handle
     vk::PhysicalDevice physicalDevice_; // GPU chosen as the default device
     vk::UniqueDevice device_; // Vulkan device for commands
@@ -116,9 +122,6 @@ class VulkanEngine
 
     uint64_t frameNumber_{ 0 };
 
-    SDL_Window* window_{ nullptr };
-
-    vk::Extent2D windowExtent_{ 1280 , 720 };
     std::array<vk::Viewport, 1> viewports_;
     std::array<vk::Rect2D, 1> scissors_;
     const std::vector<vk::ClearValue> clearValues_ = { vk::ClearColorValue(std::array{0.0f, 0.0f, 0.0f, 1.0f}) };

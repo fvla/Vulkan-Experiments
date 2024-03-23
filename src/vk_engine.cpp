@@ -1,5 +1,4 @@
 #include "vk_engine.h"
-#include "vk_validation.h"
 #include "vk_types.h"
 
 #include <vulkan/vulkan_raii.hpp>
@@ -25,141 +24,66 @@ using AvailableFeatures = ValidatedFeatureList<
     ValidationLayerFeatureIfEnabled
 >;
 
-//struct VulkanDevice
-//{
-//    vk::PhysicalDevice physicalDevice;
-//    vk::Device device;
-//    vk::Queue generalQueue;
-//    vk::Queue transferQueue;
-//};
-//
-//template <Feature Features>
-//class VulkanInstance
-//{
-//    vk::UniqueInstance instance_;
-//    std::vector<vk::UniqueDevice> internalDevices_;
-//    std::vector<VulkanDevice> devices_;
-//
-//    /* Not a default constructor to avoid warning on noexcept */
-//    VulkanInstance(std::monostate)
-//    {
-//        checkValidationLayers<Features>();
-//
-//        auto extensions = vk::enumerateInstanceExtensionProperties();
-//        std::cout << "Available instance extensions:" << std::endl;
-//        for (auto& extension : extensions)
-//            std::cout << "\t" << extension.extensionName << std::endl;
-//        if constexpr (vk::enableValidationLayers)
-//        {
-//            std::cout << "Enabled validation layers:" << std::endl;
-//            for (auto layer : Features::validationLayers)
-//                std::cout << "\t" << layer << std::endl;
-//        }
-//        else
-//            std::cout << "Validation layers disabled" << std::endl;
-//
-//        std::cout << "Enabled instance extensions:" << std::endl;
-//        for (auto extension : Features::instanceExtensions)
-//            std::cout << "\t" << extension << std::endl;
-//    }
-//public:
-//    VulkanInstance(const vk::ApplicationInfo& appInfo) :
-//        VulkanInstance(std::monostate),
-//        instance_(vk::createInstanceUnique(
-//            vk::InstanceCreateInfo{ {}, &appInfo, Features::validationLayers, Features::instanceExtensions }
-//        ))
-//    {
-//        auto physicalDevices = instance_->enumeratePhysicalDevices();
-//        for (vk::PhysicalDevice physicalDevice : physicalDevices)
-//        {
-//            if (!physicalDevice.getFeatures().geometryShader)
-//                continue;
-//
-//            VulkanDevice& deviceStruct = devices_.emplace_back();
-//            deviceStruct.physicalDevice = physicalDevice;
-//
-//            auto extensions = physicalDevice_.enumerateDeviceExtensionProperties();
-//            std::cout << "Available device extensions:" << std::endl;
-//            for (auto& extension : extensions)
-//                std::cout << "\t" << extension.extensionName << std::endl;
-//
-//            uint32_t generalQueueIndex = std::numeric_limits<uint32_t>::max();
-//            uint32_t transferQueueIndex = std::numeric_limits<uint32_t>::max();
-//            const auto queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
-//            for (uint32_t queueIndex = 0u; auto & queueFamily : queueFamilyProperties)
-//            {
-//                constexpr vk::QueueFlags generalQueueFlags =
-//                    vk::QueueFlagBits::eGraphics & vk::QueueFlagBits::eCompute & vk::QueueFlagBits::eTransfer;
-//                if (queueFamily.queueFlags & generalQueueFlags == generalQueueFlags)
-//                    generalQueueIndex = queueIndex;
-//                else if (queueFamily.queueFlags == vk::QueueFlagBits::eTransfer)
-//                    transferQueueIndex = queueIndex;
-//                queueIndex++;
-//            }
-//            assert(generalQueueIndex < queueFamilyProperties.size());
-//            assert(transferQueueIndex < queueFamilyProperties.size());
-//            const std::array queueInfos = std::to_array<vk::DeviceQueueCreateInfo>({
-//                { {}, generalQueueIndex,  1.0f },
-//                { {}, transferQueueIndex, 1.0f }
-//                });
-//
-//            vk::PhysicalDeviceVulkan12Features features12;
-//            features12.timelineSemaphore = true;
-//            vk::PhysicalDeviceVulkan13Features features13;
-//            features13.synchronization2 = true;
-//            features13.pNext = &features12;
-//            const vk::DeviceCreateInfo deviceInfo({}, queueInfos, {}, AvailableFeatures::deviceExtensions, {}, &features13);
-//
-//            internalDevices_.push_back(physicalDevice.createDeviceUnique(deviceInfo));
-//            deviceStruct.device = internalDevices_.back().get();
-//            deviceStruct.generalQueue = deviceStruct.device->getQueue(generalQueueIndex, 0u);
-//            deviceStruct.transferQueue = deviceStruct.device->getQueue(transferQueueIndex, 0u);
-//        }
-//    }
-//};
-
-VulkanEngine::VulkanEngine()
+static SDL_Window* createWindow(vk::Extent2D windowExtent)
 {
     SDL_Init(SDL_INIT_VIDEO);
 
     constexpr auto window_flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
 
-    window_ = SDL_CreateWindow(
+    SDL_Window* window = SDL_CreateWindow(
         "Vulkan Engine", //window title
         SDL_WINDOWPOS_UNDEFINED, //window position x (don't care)
         SDL_WINDOWPOS_UNDEFINED, //window position y (don't care)
-        static_cast<int>(windowExtent_.width),  //window width in pixels
-        static_cast<int>(windowExtent_.height), //window height in pixels
+        static_cast<int>(windowExtent.width),  //window width in pixels
+        static_cast<int>(windowExtent.height), //window height in pixels
         window_flags
     );
-    if (!window_)
+    if (!window)
         throw FatalError(SDL_GetError());
+    return window;
+}
 
-    {
-        auto extensions = vk::enumerateInstanceExtensionProperties();
-        std::cout << "Available instance extensions:" << std::endl;
-        for (auto& extension : extensions)
-            std::cout << "\t" << extension.extensionName << std::endl;
-    }
-    // Instance
-    {
-        const auto appInfo = vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_3);
-        checkValidationLayers<AvailableFeatures>();
-        if constexpr (vk::enableValidationLayers)
-        {
-            std::cout << "Enabled validation layers:" << std::endl;
-            for (auto layer : AvailableFeatures::validationLayers)
-                std::cout << "\t" << layer << std::endl;
-        }
-        else
-            std::cout << "Validation layers disabled" << std::endl;
+static vk::UniqueSurfaceKHR getSurface(SDL_Window* window, const VulkanInstance& instance)
+{
+    vk::SurfaceKHR surface;
+    if (!SDL_Vulkan_CreateSurface(window, *instance.getInstance(), &reinterpret_cast<VkSurfaceKHR&>(surface)))
+        throw FatalError(std::string("Failed to create SDL Vulkan surface: ") + SDL_GetError());
+    return vk::UniqueSurfaceKHR(surface, *instance.getInstance());
+}
 
-        std::cout << "Enabled instance extensions:" << std::endl;
-        for (auto extension : AvailableFeatures::instanceExtensions)
-            std::cout << "\t" << extension << std::endl;
-        const vk::InstanceCreateInfo createInfo({}, &appInfo, AvailableFeatures::validationLayers, AvailableFeatures::instanceExtensions);
-        instance_ = vk::createInstanceUnique(createInfo);
+static std::shared_ptr<VulkanDevice> selectDevice(const VulkanInstance& instance)
+{
+    const auto devices = instance.getDevices();
+    for (const auto& device : devices)
+    {
+        return device;
     }
+}
+
+void runEngine()
+{
+    vk::Extent2D windowExtent{ 1280 , 720 };
+    SDL_Window* window = createWindow(windowExtent);
+    VulkanInstance instance(
+        vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_3),
+        gsl::make_span(AvailableFeatures::validationLayers),
+        gsl::make_span(AvailableFeatures::instanceExtensions),
+        gsl::make_span(AvailableFeatures::deviceExtensions)
+    );
+    auto surface = getSurface(window, instance);
+
+
+}
+
+VulkanEngine::VulkanEngine() :
+    window_(createWindow(windowExtent_)),
+    instance_(
+        vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_3),
+        gsl::make_span(AvailableFeatures::validationLayers),
+        gsl::make_span(AvailableFeatures::instanceExtensions),
+        gsl::make_span(AvailableFeatures::deviceExtensions)
+    )
+{
     // Surface
     resetSurface();
     // Physical device
@@ -179,11 +103,11 @@ VulkanEngine::VulkanEngine()
             }
             return false;
         };
-        auto physicalDevices = instance_->enumeratePhysicalDevices();
-        auto physicalDeviceIt = std::ranges::find_if(physicalDevices, isDeviceSuitable);
-        if (physicalDeviceIt == physicalDevices.end())
-            throw FatalError("Failed to find a suitable GPU for Vulkan rendering");
-        physicalDevice_ = *physicalDeviceIt;
+        //auto physicalDevices = instance_->enumeratePhysicalDevices();
+        //auto physicalDeviceIt = std::ranges::find_if(physicalDevices, isDeviceSuitable);
+        //if (physicalDeviceIt == physicalDevices.end())
+            //throw FatalError("Failed to find a suitable GPU for Vulkan rendering");
+        //physicalDevice_ = *physicalDeviceIt;
     }
     {
         auto extensions = physicalDevice_.enumerateDeviceExtensionProperties();
@@ -327,9 +251,9 @@ void VulkanEngine::resetSurface()
 {
     surface_.reset();
     vk::SurfaceKHR surface;
-    if (!SDL_Vulkan_CreateSurface(window_, *instance_, &reinterpret_cast<VkSurfaceKHR&>(surface)))
+    if (!SDL_Vulkan_CreateSurface(window_, *instance_.getInstance(), &reinterpret_cast<VkSurfaceKHR&>(surface)))
         throw FatalError(std::string("Failed to create SDL Vulkan surface: ") + SDL_GetError());
-    surface_ = vk::UniqueSurfaceKHR(surface, *instance_);
+    surface_ = vk::UniqueSurfaceKHR(surface, *instance_.getInstance());
 }
 
 void VulkanEngine::recreateSwapchain()
