@@ -68,6 +68,7 @@ target_precompile_headers(vulkan-test
     PRIVATE
         <vulkan/vulkan.hpp>
         <vulkan/vulkan_raii.hpp>
+        <gsl/gsl>
 )
 if(MSVC)
     set_target_properties(vulkan-test PROPERTIES

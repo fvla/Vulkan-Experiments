@@ -1,33 +1,15 @@
 #pragma once
 
 #include "vk_types.h"
+#include "vk_device.h"
 #include "vk_validation.h"
 
 #include <iostream>
 
-struct VulkanDevice
-{
-    vk::raii::PhysicalDevice physicalDevice;
-    vk::raii::Device device;
-    vk::raii::Queue generalQueue;
-    vk::raii::Queue transferQueue;
-
-    VulkanDevice(
-        vk::raii::PhysicalDevice& physicalDevice_,
-        const vk::DeviceCreateInfo& deviceInfo,
-        uint32_t generalQueueIndex,
-        uint32_t transferQueueIndex
-    ) :
-        physicalDevice(physicalDevice_), device(physicalDevice.createDevice(deviceInfo)),
-        generalQueue(device.getQueue(generalQueueIndex, 0u)),
-        transferQueue(device.getQueue(transferQueueIndex, 0u))
-    {}
-};
-
 class VulkanInstance
 {
     vk::raii::Instance instance_;
-    std::vector<std::shared_ptr<VulkanDevice>> devices_;
+    std::vector<std::shared_ptr<const VulkanDevice>> devices_;
 
     vk::raii::Instance makeInstance(
         const vk::ApplicationInfo& appInfo,
@@ -76,8 +58,8 @@ public:
             for (auto& extension : extensions)
                 std::cout << "\t" << extension.extensionName << std::endl;
 
-            uint32_t generalQueueIndex = std::numeric_limits<uint32_t>::max();
-            uint32_t transferQueueIndex = std::numeric_limits<uint32_t>::max();
+            std::optional<uint32_t> generalQueueIndex;
+            std::optional<uint32_t> transferQueueIndex;
             const auto queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
             for (uint32_t queueIndex = 0u; auto & queueFamily : queueFamilyProperties)
             {
@@ -91,11 +73,14 @@ public:
             }
             assert(generalQueueIndex < queueFamilyProperties.size());
             assert(transferQueueIndex < queueFamilyProperties.size());
+
             const std::array topPriority = { 1.0f };
-            const std::array queueInfos = {
-                vk::DeviceQueueCreateInfo({}, generalQueueIndex,  topPriority),
-                vk::DeviceQueueCreateInfo({}, transferQueueIndex, topPriority),
-            };
+            const vk::DeviceQueueCreateFlags queueFlags;
+            std::vector<vk::DeviceQueueCreateInfo> queueInfos;
+            if (generalQueueIndex)
+                queueInfos.emplace_back(queueFlags, *generalQueueIndex, topPriority);
+            if (transferQueueIndex)
+                queueInfos.emplace_back(queueFlags, *transferQueueIndex, topPriority);
 
             vk::PhysicalDeviceVulkan12Features features12;
             features12.timelineSemaphore = true;
@@ -110,5 +95,5 @@ public:
     }
 
     const vk::raii::Instance& getInstance() const noexcept { return instance_; }
-    gsl::span<const std::shared_ptr<VulkanDevice>> getDevices() const noexcept { return devices_; }
+    gsl::span<const std::shared_ptr<const VulkanDevice>> getDevices() const noexcept { return devices_; }
 };

@@ -21,10 +21,10 @@ class VulkanStreamEvent
     const VulkanStream& stream_;
     uint64_t timelineValue_;
 
-    inline static vk::Semaphore getSemaphore(const VulkanStreamEvent& e);
-    static uint64_t getSemaphoreValue(const VulkanStreamEvent& e) { return e.timelineValue_; }
+    inline static vk::Semaphore getSemaphore(const VulkanStreamEvent& e) noexcept;
+    static uint64_t getSemaphoreValue(const VulkanStreamEvent& e) noexcept { return e.timelineValue_; }
 
-    VulkanStreamEvent(const VulkanStream& stream, uint64_t timelineValue)
+    VulkanStreamEvent(const VulkanStream& stream, uint64_t timelineValue) noexcept
         : stream_(stream), timelineValue_(timelineValue) {}
 public:
     template <std::same_as<VulkanStreamEvent> ...Events>
@@ -80,6 +80,10 @@ private:
 public:
     VulkanGraphicsStream(const vk::Device& device, VulkanCommandPool& commandPool)
         : VulkanStream(device, commandPool), acquireSemaphore_(device), presentSemaphore_(device) {}
+    VulkanGraphicsStream(const VulkanGraphicsStream&) = delete;
+    VulkanGraphicsStream& operator=(const VulkanGraphicsStream&) = delete;
+    VulkanGraphicsStream(VulkanGraphicsStream&&) = default;
+    VulkanGraphicsStream& operator=(VulkanGraphicsStream&&) = default;
 
     virtual ~VulkanGraphicsStream()
     {
@@ -120,12 +124,12 @@ public:
         const vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eNone;
         queue.submit(vk::SubmitInfo{ semaphore_.get(), waitStage, {}, presentSemaphore_.get(), &timelineSubmit });
 
-        const vk::PresentInfoKHR presentInfo(presentSemaphore_.get(), swapchain.getSwapchain(), imageIndex, {});
+        const vk::PresentInfoKHR presentInfo(presentSemaphore_.get(), *swapchain.getSwapchain(), imageIndex, {});
         VK_CHECK(queue.presentKHR(presentInfo));
     }
 };
 
-vk::Semaphore VulkanStreamEvent::getSemaphore(const VulkanStreamEvent& e) { return e.stream_.semaphore_.get(); }
+vk::Semaphore VulkanStreamEvent::getSemaphore(const VulkanStreamEvent& e) noexcept { return e.stream_.semaphore_.get(); }
 
 template <std::same_as<VulkanStreamEvent> ...Events>
 void VulkanStreamEvent::submitEvents(const vk::Queue& queue, const VulkanStreamEvent& signalEvent, const Events&... waitEvents)

@@ -46,15 +46,15 @@ class TrianglePipeline
         {{-0.5f, 0.5f, 0.0f},{0.0f,0.0f,1.0f}},
     });
 
-    auto triangleCommandRecorder(uint64_t frameNumber)
+    auto triangleCommandRecorder(uint64_t frameNumber) noexcept
     {
         return [&, frameNumber](const vk::CommandBuffer& commandBuffer)
         {
-            glm::vec3 cameraPosition = { 0.0f,-0.1f,-2.0f };
+            const glm::vec3 cameraPosition = { 0.0f,-0.1f,-2.0f };
 
-            glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPosition);
-            glm::mat4 projection = glm::perspective(glm::radians(90.f), viewports_[0].width / viewports_[0].height, 0.1f, 20.0f);
-            glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(frameNumber * 2.0f), glm::vec3(0, 1, 0));
+            const glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPosition);
+            const glm::mat4 projection = glm::perspective(glm::radians(90.f), viewports_[0].width / viewports_[0].height, 0.1f, 20.0f);
+            const glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(frameNumber * 2.0f), glm::vec3(0, 1, 0));
 
             VertexPushConstants constants;
             constants.renderMatrix = projection * view * model;
@@ -82,6 +82,11 @@ public:
             stream_.submitWork(queueInfo.queue, commandRecorder);
         }
     }
+    TrianglePipeline(const TrianglePipeline&) = delete;
+    TrianglePipeline& operator=(const TrianglePipeline&) = delete;
+    TrianglePipeline(TrianglePipeline&&) = default;
+    TrianglePipeline& operator=(TrianglePipeline&&) = default;
+
     ~TrianglePipeline() { stream_.synchronize(); }
 
     void run(const VulkanSwapchain& swapchain, const vk::Queue& queue, const vk::RenderPassBeginInfo& renderPassInfo, uint64_t frameNumber)
@@ -92,49 +97,4 @@ public:
         stream_.submitWork(queue, renderPassInfo, commandRecorder);
         stream_.present(queue, swapchain, imageIndex);
     }
-};
-
-class VulkanEngine
-{
-    vk::Extent2D windowExtent_{ 1280 , 720 };
-    SDL_Window* window_{ nullptr };
-
-    VulkanInstance instance_; // Vulkan library handle
-    vk::DebugUtilsMessengerEXT debug_messenger_; // Vulkan debug output handle
-    vk::PhysicalDevice physicalDevice_; // GPU chosen as the default device
-    vk::UniqueDevice device_; // Vulkan device for commands
-    std::vector<VulkanQueueInfo> graphicsQueues_; // All graphics device queues
-
-    vk::UniqueSurfaceKHR surface_;
-    vk::SurfaceFormatKHR surfaceFormat_;
-
-    std::optional<VulkanSwapchain> swapchain_;
-
-    vk::UniqueRenderPass renderPass_;
-    vk::UniquePipelineLayout pipelineLayout_;
-    vk::UniquePipeline pipeline_;
-
-    vk::UniqueBuffer vertexBuffer_;
-
-    std::optional<VulkanCommandPool> commandPool_;
-
-    std::deque<TrianglePipeline> trianglePipelines_;
-
-    uint64_t frameNumber_{ 0 };
-
-    std::array<vk::Viewport, 1> viewports_;
-    std::array<vk::Rect2D, 1> scissors_;
-    const std::vector<vk::ClearValue> clearValues_ = { vk::ClearColorValue(std::array{0.0f, 0.0f, 0.0f, 1.0f}) };
-public:
-    VulkanEngine();
-    ~VulkanEngine();
-    VulkanEngine(const VulkanEngine&) = delete;
-    VulkanEngine& operator=(const VulkanEngine&) = delete;
-    VulkanEngine(VulkanEngine&&) = delete;
-    VulkanEngine& operator=(VulkanEngine&&) = delete;
-
-    void resetSurface();
-    void recreateSwapchain();
-    void draw();
-    void run();
 };

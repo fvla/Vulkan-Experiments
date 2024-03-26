@@ -9,8 +9,7 @@ int main(int argc, const char* argv[])
     std::ignore = argv;
     try
     {
-        VulkanEngine engine;
-        engine.run();
+        runEngine();
     }
     catch (const FatalError& e)
     {
