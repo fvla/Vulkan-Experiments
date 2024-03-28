@@ -27,7 +27,7 @@ class VulkanCommandPoolImpl
     vk::UniqueCommandPool commandPool_;
     std::vector<vk::CommandBuffer> commandBuffers_;
 
-    VulkanCommandPoolImpl(vk::Device device, size_t bufferCount, VulkanQueueInfo queueInfo)
+    VulkanCommandPoolImpl(vk::Device device, size_t bufferCount, const VulkanQueueInfo& queueInfo)
         : device_(device), bufferCount_(bufferCount)
     {
         const vk::CommandPoolCreateInfo commandPoolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queueInfo.familyIndex);
@@ -181,7 +181,7 @@ class VulkanCommandPool
     std::shared_ptr<detail::VulkanCommandPoolImpl> commandPoolImpl_;
 public:
     GSL_SUPPRESS(r.11)
-    VulkanCommandPool(vk::Device device, size_t bufferCount, VulkanQueueInfo queueInfo)
+    VulkanCommandPool(vk::Device device, size_t bufferCount, const VulkanQueueInfo& queueInfo)
         : commandPoolImpl_(new detail::VulkanCommandPoolImpl(device, bufferCount, queueInfo))
     {}
 

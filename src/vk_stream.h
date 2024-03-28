@@ -38,15 +38,15 @@ class VulkanStream
     friend class VulkanStreamEvent;
     friend class VulkanGraphicsStream;
 
-    VulkanCommandPool& commandPool_;
+    std::shared_ptr<VulkanCommandPool> commandPool_;
     std::optional<VulkanCommandBuffer> currentCommandBuffer_;
     VulkanTimelineSemaphore semaphore_;
     uint64_t lastValue_ = 0;
 public:
-    VulkanStream(const vk::Device& device, VulkanCommandPool& commandPool)
+    VulkanStream(const vk::Device& device, std::shared_ptr<VulkanCommandPool> commandPool)
         : commandPool_(commandPool), semaphore_(device) {}
 
-    VulkanStreamEvent getLastEvent() const
+    VulkanStreamEvent getLastEvent() const noexcept
     {
         return VulkanStreamEvent(*this, lastValue_);
     }
@@ -59,7 +59,7 @@ public:
         waitSemaphores.push_back(semaphore_.get());
 
         const vk::TimelineSemaphoreSubmitInfo timelineSubmit(waitSemaphoreValues, ++lastValue_);
-        currentCommandBuffer_ = commandPool_.checkOut();
+        currentCommandBuffer_ = commandPool_->checkOut();
         currentCommandBuffer_->recordOnce(recorder);
         const vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
         const vk::SubmitInfo submitInfo(waitSemaphores, waitStage, {}, semaphore_.get(), &timelineSubmit);
@@ -78,7 +78,7 @@ private:
     VulkanSemaphore acquireSemaphore_;
     VulkanSemaphore presentSemaphore_;
 public:
-    VulkanGraphicsStream(const vk::Device& device, VulkanCommandPool& commandPool)
+    VulkanGraphicsStream(const vk::Device& device, std::shared_ptr<VulkanCommandPool> commandPool)
         : VulkanStream(device, commandPool), acquireSemaphore_(device), presentSemaphore_(device) {}
     VulkanGraphicsStream(const VulkanGraphicsStream&) = delete;
     VulkanGraphicsStream& operator=(const VulkanGraphicsStream&) = delete;

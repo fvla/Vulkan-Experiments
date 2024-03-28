@@ -6,22 +6,24 @@ struct VulkanDevice
 {
     vk::raii::PhysicalDevice physicalDevice;
     vk::raii::Device device;
-    std::optional<vk::raii::Queue> generalQueue;
-    std::optional<vk::raii::Queue> transferQueue;
+    std::optional<VulkanQueueInfo> generalQueue;
+    std::optional<VulkanQueueInfo> transferQueue;
 
     VulkanDevice(
-        vk::raii::PhysicalDevice& physicalDevice_,
+        vk::raii::PhysicalDevice physicalDevice_,
         const vk::DeviceCreateInfo& deviceInfo,
         std::optional<uint32_t> generalQueueIndex,
         std::optional<uint32_t> transferQueueIndex
     ) :
-        physicalDevice(physicalDevice_), device(physicalDevice.createDevice(deviceInfo)),
-        generalQueue(getQueue_(generalQueueIndex)),
-        transferQueue(getQueue_(transferQueueIndex))
+        physicalDevice(std::move(physicalDevice_)),
+        device(physicalDevice.createDevice(deviceInfo)),
+        generalQueue(getQueue_(device, generalQueueIndex)),
+        transferQueue(getQueue_(device, transferQueueIndex))
     {}
 private:
-    std::optional<vk::raii::Queue> getQueue_(std::optional<uint32_t> queueIndex) const
+    static std::optional<VulkanQueueInfo>
+    getQueue_(const vk::raii::Device& device, std::optional<uint32_t> queueFamilyIndex)
     {
-        return queueIndex.transform([this](uint32_t i) { return device.getQueue(i, 0u); });
+        return queueFamilyIndex.transform([&device](uint32_t i) { return VulkanQueueInfo(i, 0u, device.getQueue(i, 0u)); });
     }
 };

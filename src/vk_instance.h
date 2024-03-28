@@ -61,10 +61,10 @@ public:
             std::optional<uint32_t> generalQueueIndex;
             std::optional<uint32_t> transferQueueIndex;
             const auto queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
-            for (uint32_t queueIndex = 0u; auto & queueFamily : queueFamilyProperties)
+            for (uint32_t queueIndex = 0u; auto& queueFamily : queueFamilyProperties)
             {
                 constexpr vk::QueueFlags generalQueueFlags =
-                    vk::QueueFlagBits::eGraphics & vk::QueueFlagBits::eCompute & vk::QueueFlagBits::eTransfer;
+                    vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute | vk::QueueFlagBits::eTransfer;
                 if ((queueFamily.queueFlags & generalQueueFlags) == generalQueueFlags)
                     generalQueueIndex = queueIndex;
                 else if (queueFamily.queueFlags == vk::QueueFlagBits::eTransfer)

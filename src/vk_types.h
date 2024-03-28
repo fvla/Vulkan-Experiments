@@ -276,14 +276,16 @@ struct FatalError : std::runtime_error
     FatalError() = delete;
 };
 
+struct QuitException : std::exception {};
+
 struct VulkanQueueInfo
 {
     uint32_t familyIndex;
     uint32_t index;
-    vk::Queue queue;
+    vk::raii::Queue queue;
 
-    VulkanQueueInfo(uint32_t familyIndex_, uint32_t index_, vk::Queue queue_) noexcept
-        : familyIndex(familyIndex_), index(index_), queue(queue_) {}
+    VulkanQueueInfo(uint32_t familyIndex_, uint32_t index_, vk::raii::Queue queue_) noexcept
+        : familyIndex(familyIndex_), index(index_), queue(std::move(queue_)) {}
 };
 
 struct VertexInfo

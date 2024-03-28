@@ -29,7 +29,7 @@ static SDL_Window* createWindow(vk::Extent2D windowExtent)
 {
     SDL_Init(SDL_INIT_VIDEO);
 
-    constexpr auto window_flags = SDL_WINDOW_VULKAN /*| SDL_WINDOW_RESIZABLE*/;
+    constexpr auto window_flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
 
     SDL_Window* window = SDL_CreateWindow(
         "Vulkan Engine", //window title
@@ -175,16 +175,18 @@ static vk::raii::Pipeline createPipeline(const vk::RenderPass& renderPass,
 
 void runEngine()
 {
-    const vk::Extent2D windowExtent{ 1280 , 720 };
-    const std::unique_ptr window =
+    static vk::Extent2D windowExtent{ 1280 , 720 };
+    static const std::unique_ptr window =
         std::unique_ptr<SDL_Window, void (*)(SDL_Window*)>(createWindow(windowExtent), &SDL_DestroyWindow);
-    const auto instance = VulkanInstance(
+    static const auto instance = VulkanInstance(
         vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_3),
         gsl::make_span(AvailableFeatures::validationLayers),
         gsl::make_span(AvailableFeatures::instanceExtensions),
         gsl::make_span(AvailableFeatures::deviceExtensions)
     );
-    const auto device = selectDevice(instance);
+    static const auto device = selectDevice(instance);
+    if (!device->generalQueue)
+        throw FatalError("Failed to acquire general queue from device");
 
     const auto surface = getSurface(window.get(), instance);
     const auto surfaceFormat = selectSurfaceFormat(*surface, *device);
@@ -194,35 +196,41 @@ void runEngine()
     const auto pipelineLayout = createPipelineLayout(*device);
     const auto pipeline = createPipeline(*renderPass, *pipelineLayout, windowExtent, *device);
 
-    bool quit = false;
+    const auto commandPool = std::make_shared<VulkanCommandPool>(*device->device, 16u, *device->generalQueue);
+    VulkanGraphicsStream stream(*device->device, commandPool);
 
-    while (!quit)
+    for (;;)
     {
         for (SDL_Event e{ 0 }; SDL_PollEvent(&e) != 0; )
         {
             switch (e.type)
             {
             case SDL_QUIT:
-                quit = true;
-                break;
+                throw QuitException();
             case SDL_WINDOWEVENT:
                 switch (e.window.event)
                 {
                 case SDL_WINDOWEVENT_RESIZED:
-                    //windowExtent.width = gsl::narrow<uint32_t>(e.window.data1);
-                    //windowExtent.height = gsl::narrow<uint32_t>(e.window.data2);
-                    //recreateSwapchain();
-                    break;
-                default:
-                    break;
+                    windowExtent.width = gsl::narrow<uint32_t>(e.window.data1);
+                    windowExtent.height = gsl::narrow<uint32_t>(e.window.data2);
+                    return;
                 }
                 break;
-            default:
-                break;
             }
-            if (e.type == SDL_QUIT) quit = true;
         }
 
-        // draw();
+        const uint32_t imageIndex = stream.acquireNextImage(*device->generalQueue->queue, swapchain);
+        const auto framebuffer = device->device.createFramebuffer(
+            vk::FramebufferCreateInfo({}, *renderPass, *swapchain.getImageView(imageIndex),
+                                      windowExtent.width, windowExtent.height, 1u));
+        static constexpr auto clearValues = std::to_array<vk::ClearValue>({
+            vk::ClearColorValue({std::array{0.0f, 0.0f, 0.0f, 1.0f}}),
+        });
+        const auto renderPassInfo =
+            vk::RenderPassBeginInfo(*renderPass, *framebuffer, vk::Rect2D({}, windowExtent), clearValues);
+        auto recorder = [](vk::CommandBuffer) {};
+        stream.submitWork(*device->generalQueue->queue, renderPassInfo, recorder);
+        stream.present(*device->generalQueue->queue, swapchain, imageIndex);
+        stream.synchronize();
     }
 }
