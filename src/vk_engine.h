@@ -16,9 +16,14 @@
 
 struct SDL_Window;
 
-struct VertexPushConstants
+class VulkanEngine
 {
-    glm::mat4 renderMatrix;
-};
+    vk::Extent2D windowExtent = { 1280, 720 };
+    gsl::not_null<std::shared_ptr<SDL_Window>> window;
+    gsl::not_null<std::shared_ptr<const VulkanInstance>> instance;
+    gsl::not_null<std::shared_ptr<const VulkanDevice>> device;
+public:
+    VulkanEngine();
 
-void runEngine();
+    void run();
+};

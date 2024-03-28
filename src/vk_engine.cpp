@@ -25,6 +25,11 @@ using AvailableFeatures = ValidatedFeatureList<
     ValidationLayerFeatureIfEnabled
 >;
 
+struct VertexPushConstants
+{
+    glm::mat4 renderMatrix;
+};
+
 static SDL_Window* createWindow(vk::Extent2D windowExtent)
 {
     SDL_Init(SDL_INIT_VIDEO);
@@ -52,11 +57,9 @@ static vk::raii::SurfaceKHR getSurface(SDL_Window* window, const VulkanInstance&
     return vk::raii::SurfaceKHR(instance.getInstance(), surfaceRaw);
 }
 
-using DevicePointer = std::shared_ptr<const VulkanDevice>;
-
 static auto selectDevice(const VulkanInstance& instance)
 {
-    std::vector<DevicePointer> devices;
+    std::vector<std::shared_ptr<const VulkanDevice>> devices;
     {
         const auto devicesView = instance.getDevices();
         devices.reserve(devicesView.size());
@@ -64,7 +67,7 @@ static auto selectDevice(const VulkanInstance& instance)
     }
     constexpr int BAD_DEVICE_SCORE = -1;
     /* Assign device suitability score. Greater is better. */
-    const auto deviceScorer = [](const DevicePointer& device) noexcept -> int
+    const auto deviceScorer = [](const std::shared_ptr<const VulkanDevice>& device) noexcept -> int
     {
         const auto deviceProperties = device->physicalDevice.getProperties();
         const auto deviceFeatures = device->physicalDevice.getFeatures();
@@ -173,22 +176,23 @@ static vk::raii::Pipeline createPipeline(const vk::RenderPass& renderPass,
     return pipeline;
 }
 
-void runEngine()
-{
-    static vk::Extent2D windowExtent{ 1280 , 720 };
-    static const std::unique_ptr window =
-        std::unique_ptr<SDL_Window, void (*)(SDL_Window*)>(createWindow(windowExtent), &SDL_DestroyWindow);
-    static const auto instance = VulkanInstance(
+VulkanEngine::VulkanEngine() :
+    window({ createWindow(windowExtent), &SDL_DestroyWindow }),
+    instance(std::make_shared<const VulkanInstance>(
         vk::ApplicationInfo("Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0), "No Engine", 0, VK_API_VERSION_1_3),
         gsl::make_span(AvailableFeatures::validationLayers),
         gsl::make_span(AvailableFeatures::instanceExtensions),
         gsl::make_span(AvailableFeatures::deviceExtensions)
-    );
-    static const auto device = selectDevice(instance);
+    )),
+    device(selectDevice(*instance))
+{
     if (!device->generalQueue)
         throw FatalError("Failed to acquire general queue from device");
+}
 
-    const auto surface = getSurface(window.get(), instance);
+void VulkanEngine::run()
+{
+    const auto surface = getSurface(&*window, *instance);
     const auto surfaceFormat = selectSurfaceFormat(*surface, *device);
     const auto swapchain = VulkanSwapchain(*device, *surface, surfaceFormat, windowExtent);
 

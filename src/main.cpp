@@ -7,10 +7,12 @@ int main(int argc, const char* argv[])
 {
     std::ignore = argc;
     std::ignore = argv;
+
+    VulkanEngine engine;
     try
     {
         for (;;)
-            runEngine();
+            engine.run();
     }
     catch (const QuitException&) {}
     catch (const FatalError& e)
