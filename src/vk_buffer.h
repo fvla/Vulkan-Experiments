@@ -2,6 +2,7 @@
 
 #include "vk_types.h"
 #include "vk_command.h"
+#include "vk_device.h"
 
 #include <chrono>
 #include <limits>
@@ -30,20 +31,17 @@ template <vk::BufferUsageFlags usage, VulkanBufferType bufferType>
 class VulkanBuffer
 {
 private:
-    vk::Device device_;
     vk::DeviceSize bufferSize_;
-    vk::UniqueBuffer buffer_;
-    vk::DeviceSize bufferCapacity_;
-    vk::UniqueDeviceMemory bufferMemory_;
+    vk::raii::Buffer buffer_;
+    vk::DeviceSize bufferCapacity_ = 0;
+    vk::raii::DeviceMemory bufferMemory_;
 
     constexpr static vk::MemoryPropertyFlags memoryPropertyFlags_ = getMemoryFlags(bufferType);
-public:
-    VulkanBuffer(const vk::PhysicalDevice& physicalDevice, const vk::Device& device, vk::DeviceSize bufferSize)
-        : device_(device), bufferSize_(bufferSize)
+
+    vk::raii::DeviceMemory createBufferMemory(const VulkanDevice& device)
     {
-        buffer_ = device_.createBufferUnique(vk::BufferCreateInfo({}, bufferSize, usage, vk::SharingMode::eExclusive, {}));
-        vk::MemoryRequirements memoryRequirements = device_.getBufferMemoryRequirements(*buffer_);
-        const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
+        vk::MemoryRequirements memoryRequirements = buffer_.getMemoryRequirements();
+        const vk::PhysicalDeviceMemoryProperties memoryProperties = device.physicalDevice.getMemoryProperties();
         bufferCapacity_ = memoryRequirements.size;
 
         constexpr auto findMemoryType = [](auto& memoryRequirements, const auto& memoryProperties)
@@ -59,8 +57,15 @@ public:
             }
             throw FatalError("Failed to find suitable memory type for VulkanBuffer");
         };
-        bufferMemory_ = device_.allocateMemoryUnique({ bufferCapacity_, findMemoryType(memoryRequirements, memoryProperties) });
-        device_.bindBufferMemory(*buffer_, *bufferMemory_, 0);
+        return device.device.allocateMemory({ bufferCapacity_, findMemoryType(memoryRequirements, memoryProperties) });
+    }
+public:
+    VulkanBuffer(const VulkanDevice& device, vk::DeviceSize bufferSize) :
+        bufferSize_(bufferSize),
+        buffer_(device.device.createBuffer(vk::BufferCreateInfo({}, bufferSize, usage, vk::SharingMode::eExclusive, {}))),
+        bufferMemory_(createBufferMemory(device))
+    {
+        buffer_.bindMemory(*bufferMemory_, 0);
     }
     VulkanBuffer(const VulkanBuffer&) = delete;
     VulkanBuffer& operator=(const VulkanBuffer&) = delete;
@@ -75,18 +80,18 @@ public:
     {
         static_assert(bufferType == VulkanBufferType::Staging);
         assert(data.size_bytes() <= bufferSize_);
-        void* bufferPointer = device_.mapMemory(*bufferMemory_, 0, data.size_bytes());
+        void* bufferPointer = bufferMemory_.mapMemory(0, data.size_bytes());
         std::memcpy(bufferPointer, data.data(), data.size_bytes());
-        device_.unmapMemory(*bufferMemory_);
+        bufferMemory_.unmapMemory();
     }
     template <typename T, size_t N>
     void copyTo(const gsl::span<T, N> data) const
     {
         static_assert(bufferType == VulkanBufferType::Staging);
         assert(data.size_bytes() >= bufferSize_);
-        const T* bufferPointer = reinterpret_cast<T*>(device_.mapMemory(*bufferMemory_, 0, bufferSize_));
+        const T* bufferPointer = reinterpret_cast<T*>(bufferMemory_.mapMemory(0, bufferSize_));
         std::memcpy(data.data(), bufferPointer, data.size_bytes());
-        device_.unmapMemory(*bufferMemory_);
+        bufferMemory_.unmapMemory();
     }
 };
 

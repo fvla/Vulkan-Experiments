@@ -199,6 +199,23 @@ void runEngine()
     const auto commandPool = std::make_shared<VulkanCommandPool>(*device->device, 16u, *device->generalQueue);
     VulkanGraphicsStream stream(*device->device, commandPool);
 
+    static constexpr auto vertices = std::to_array<SimpleVertex>({
+        {{ 0.0f,-0.5f, 0.0f},{1.0f,0.0f,0.0f}},
+        {{ 0.5f, 0.5f, 0.0f},{0.0f,1.0f,0.0f}},
+        {{-0.5f, 0.5f, 0.0f},{0.0f,0.0f,1.0f}},
+    });
+    using enum vk::BufferUsageFlagBits;
+    VulkanBuffer<eVertexBuffer | eTransferDst, VulkanBufferType::DeviceLocal> vertexBuffer(*device, sizeof(vertices));
+
+    {
+        const VulkanBuffer<eTransferSrc, VulkanBufferType::Staging> stagingBuffer(*device, vertexBuffer.size());
+        stagingBuffer.copyFrom(gsl::span(vertices));
+        auto commandRecorder = recordCopyBuffers(stagingBuffer, vertexBuffer);
+        stream.submitWork(*device->generalQueue->queue, commandRecorder);
+        stream.synchronize();
+    }
+
+    int64_t frameNumber = 0;
     for (;;)
     {
         for (SDL_Event e{ 0 }; SDL_PollEvent(&e) != 0; )
@@ -228,9 +245,28 @@ void runEngine()
         });
         const auto renderPassInfo =
             vk::RenderPassBeginInfo(*renderPass, *framebuffer, vk::Rect2D({}, windowExtent), clearValues);
-        auto recorder = [](vk::CommandBuffer) {};
+        auto recorder = [&](const vk::CommandBuffer& cmd)
+        {
+            const glm::vec3 cameraPosition = { 0.0f,-0.1f,-2.0f };
+
+            const glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPosition);
+            const float aspectRatio = static_cast<float>(windowExtent.width) / windowExtent.height;
+            const glm::mat4 projection = glm::perspective(glm::radians(90.f), aspectRatio, 0.1f, 20.0f);
+            const glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(frameNumber * 2.0f), glm::vec3(0, 1, 0));
+
+            VertexPushConstants constants;
+            constants.renderMatrix = projection * view * model;
+            using enum vk::ShaderStageFlagBits;
+            cmd.pushConstants<VertexPushConstants>(*pipelineLayout, eVertex, 0, constants);
+
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+            cmd.bindVertexBuffers(0, vertexBuffer.get(), vk::DeviceSize{ 0 });
+            cmd.draw(gsl::narrow<uint32_t>(vertexBuffer.size()), 1, 0, 0);
+        };
         stream.submitWork(*device->generalQueue->queue, renderPassInfo, recorder);
         stream.present(*device->generalQueue->queue, swapchain, imageIndex);
         stream.synchronize();
+
+        frameNumber++;
     }
 }
