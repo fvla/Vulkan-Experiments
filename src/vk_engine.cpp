@@ -189,13 +189,13 @@ VulkanEngine::VulkanEngine() :
         gsl::make_span(AvailableFeatures::deviceExtensions)
     )),
     device(selectDevice(*instance))
-{
-    if (!device->generalQueue)
-        throw FatalError("Failed to acquire general queue from device");
-}
+{}
 
 void VulkanEngine::run()
 {
+    if (!device->generalQueue)
+        throw FatalError("Failed to acquire general queue from device");
+
     const auto surface = getSurface(&*window, *instance);
     const auto surfaceFormat = selectSurfaceFormat(*surface, *device);
     const auto swapchain = VulkanSwapchain(*device, *surface, surfaceFormat, windowExtent);
@@ -228,11 +228,13 @@ void VulkanEngine::run()
     {
         for (SDL_Event e{ 0 }; SDL_PollEvent(&e) != 0; )
         {
+            GSL_SUPPRESS(es.79)
             switch (e.type)
             {
             case SDL_QUIT:
                 throw QuitException();
             case SDL_WINDOWEVENT:
+                GSL_SUPPRESS(es.79)
                 switch (e.window.event)
                 {
                 case SDL_WINDOWEVENT_RESIZED:

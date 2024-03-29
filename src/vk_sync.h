@@ -34,7 +34,7 @@ public:
 
     const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
     [[nodiscard]] vk::Result wait(uint64_t value, std::chrono::nanoseconds timeout) const { return wait(value, gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
-    [[nodiscard]] vk::Result wait(uint64_t value) const { return wait(value, std::chrono::nanoseconds::max()); }
+    void wait(uint64_t value) const { std::ignore = wait(value, std::chrono::nanoseconds::max()); }
     uint64_t counter() const { return device_.getSemaphoreCounterValue(*semaphore_); }
     void signal(uint64_t value) const { device_.signalSemaphore({ *semaphore_, value }); }
 };

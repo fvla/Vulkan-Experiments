@@ -47,6 +47,15 @@ public:
         : commandPool_(commandPool), semaphore_(device) {}
     DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanStream);
 
+    virtual ~VulkanStream()
+    {
+        try
+        {
+            synchronize();
+        }
+        catch (const vk::SystemError& e) {}
+    }
+
     VulkanStreamEvent getLastEvent() const noexcept
     {
         return VulkanStreamEvent(*this, lastValue_);
@@ -69,7 +78,7 @@ public:
     
     void synchronize() const
     {
-        VK_CHECK(semaphore_.wait(lastValue_));
+        semaphore_.wait(lastValue_);
     }
 };
 
@@ -82,11 +91,6 @@ public:
     VulkanGraphicsStream(const vk::Device& device, std::shared_ptr<VulkanCommandPool> commandPool)
         : VulkanStream(device, commandPool), acquireSemaphore_(device), presentSemaphore_(device) {}
     DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanGraphicsStream);
-
-    virtual ~VulkanGraphicsStream()
-    {
-        synchronize();
-    }
 
     using VulkanStream::submitWork;
 
@@ -142,5 +146,5 @@ void VulkanStreamEvent::submitEvents(const vk::Queue& queue, const VulkanStreamE
 
 void VulkanStreamEvent::synchronize() const
 {
-    VK_CHECK(stream_.semaphore_.wait(timelineValue_));
+    stream_.semaphore_.wait(timelineValue_);
 }

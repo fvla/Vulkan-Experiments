@@ -17,14 +17,15 @@ struct VulkanDevice
     ) :
         physicalDevice(std::move(physicalDevice_)),
         device(physicalDevice.createDevice(deviceInfo)),
-        generalQueue(getQueue_(device, generalQueueIndex)),
-        transferQueue(getQueue_(device, transferQueueIndex))
+        generalQueue(getQueue_(generalQueueIndex)),
+        transferQueue(getQueue_(transferQueueIndex))
     {}
     DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanDevice);
 private:
-    static std::optional<VulkanQueueInfo>
-    getQueue_(const vk::raii::Device& device, std::optional<uint32_t> queueFamilyIndex)
+    std::optional<VulkanQueueInfo>
+    getQueue_(std::optional<uint32_t> queueFamilyIndex)
     {
-        return queueFamilyIndex.transform([&device](uint32_t i) { return VulkanQueueInfo(i, 0u, device.getQueue(i, 0u)); });
+        return queueFamilyIndex.transform([this](uint32_t i)
+        { return VulkanQueueInfo(i, 0u, device.getQueue(i, 0u)); });
     }
 };
