@@ -13,10 +13,7 @@ public:
     VulkanSemaphore(const vk::Device& device)
         : semaphore_(device.createSemaphoreUnique({}))
     {}
-    VulkanSemaphore(const VulkanSemaphore&) = delete;
-    VulkanSemaphore& operator=(const VulkanSemaphore&) = delete;
-    VulkanSemaphore(VulkanSemaphore&&) = default;
-    VulkanSemaphore& operator=(VulkanSemaphore&&) = default;
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanSemaphore);
 
     const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
 };
@@ -33,10 +30,7 @@ public:
     VulkanTimelineSemaphore(const vk::Device& device) :
         device_(device), semaphore_(device.createSemaphoreUnique({ {}, &semaphoreTypeInfo_ }))
     {}
-    VulkanTimelineSemaphore(const VulkanTimelineSemaphore&) = delete;
-    VulkanTimelineSemaphore& operator=(const VulkanTimelineSemaphore&) = delete;
-    VulkanTimelineSemaphore(VulkanTimelineSemaphore&&) = default;
-    VulkanTimelineSemaphore& operator=(VulkanTimelineSemaphore&&) = default;
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanTimelineSemaphore);
 
     const vk::Semaphore& get() const noexcept { return semaphore_.get(); }
     [[nodiscard]] vk::Result wait(uint64_t value, std::chrono::nanoseconds timeout) const { return wait(value, gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }
@@ -56,10 +50,7 @@ public:
     VulkanFence(const vk::Device& device)
         : device_(device), fence_(device.createFenceUnique({}))
     {}
-    VulkanFence(const VulkanFence&) = delete;
-    VulkanFence& operator=(const VulkanFence&) = delete;
-    VulkanFence(VulkanFence&&) = default;
-    VulkanFence& operator=(VulkanFence&&) = default;
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanFence);
 
     const vk::Fence& get() const noexcept { return fence_.get(); }
     [[nodiscard]] vk::Result wait(std::chrono::nanoseconds timeout) const { return wait(gsl::narrow_cast<uint64_t>(std::max(0ll, timeout.count()))); }

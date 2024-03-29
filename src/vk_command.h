@@ -37,10 +37,7 @@ class VulkanCommandPoolImpl
         commandBuffers_ = device.allocateCommandBuffers(commandBufferInfo);
     }
 public:
-    VulkanCommandPoolImpl(const VulkanCommandPoolImpl&) = delete;
-    VulkanCommandPoolImpl& operator=(const VulkanCommandPoolImpl&) = delete;
-    VulkanCommandPoolImpl(VulkanCommandPoolImpl&&) = default;
-    VulkanCommandPoolImpl& operator=(VulkanCommandPoolImpl&&) = default;
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanCommandPoolImpl);
 
     ~VulkanCommandPoolImpl()
     {
@@ -96,10 +93,7 @@ class VulkanCommandBuffer
         : commandPool_(commandPool), commandBuffer_(std::move(commandBuffer)), fence_(device)
     {}
 public:
-    VulkanCommandBuffer(const VulkanCommandBuffer&) = delete;
-    VulkanCommandBuffer& operator=(const VulkanCommandBuffer&) = delete;
-    VulkanCommandBuffer(VulkanCommandBuffer&&) = default;
-    VulkanCommandBuffer& operator=(VulkanCommandBuffer&&) = default;
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanCommandBuffer);
 
     ~VulkanCommandBuffer()
     {
@@ -184,6 +178,7 @@ public:
     VulkanCommandPool(vk::Device device, size_t bufferCount, const VulkanQueueInfo& queueInfo)
         : commandPoolImpl_(new detail::VulkanCommandPoolImpl(device, bufferCount, queueInfo))
     {}
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanCommandPool);
 
     VulkanCommandBuffer checkOut()
     {

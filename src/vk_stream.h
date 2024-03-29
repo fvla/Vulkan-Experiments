@@ -45,6 +45,7 @@ class VulkanStream
 public:
     VulkanStream(const vk::Device& device, std::shared_ptr<VulkanCommandPool> commandPool)
         : commandPool_(commandPool), semaphore_(device) {}
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanStream);
 
     VulkanStreamEvent getLastEvent() const noexcept
     {
@@ -80,10 +81,7 @@ private:
 public:
     VulkanGraphicsStream(const vk::Device& device, std::shared_ptr<VulkanCommandPool> commandPool)
         : VulkanStream(device, commandPool), acquireSemaphore_(device), presentSemaphore_(device) {}
-    VulkanGraphicsStream(const VulkanGraphicsStream&) = delete;
-    VulkanGraphicsStream& operator=(const VulkanGraphicsStream&) = delete;
-    VulkanGraphicsStream(VulkanGraphicsStream&&) = default;
-    VulkanGraphicsStream& operator=(VulkanGraphicsStream&&) = default;
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanGraphicsStream);
 
     virtual ~VulkanGraphicsStream()
     {

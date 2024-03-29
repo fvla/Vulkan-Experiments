@@ -1,18 +1,10 @@
 #pragma once
 
 #include "vk_types.h"
-#include "vk_buffer.h"
-#include "vk_command.h"
+#include "vk_device.h"
 #include "vk_instance.h"
-#include "vk_stream.h"
-#include "vk_swapchain.h"
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
-#include <functional>
 #include <memory>
-#include <optional>
 
 struct SDL_Window;
 
@@ -24,6 +16,7 @@ class VulkanEngine
     gsl::not_null<std::shared_ptr<const VulkanDevice>> device;
 public:
     VulkanEngine();
+    DECLARE_CONSTRUCTORS_MOVE_DELETED(VulkanEngine);
 
     void run();
 };

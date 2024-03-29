@@ -40,6 +40,23 @@
 #define VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 #endif
 
+#define DECLARE_CONSTRUCTORS_COPY_DEFAULTED(Class)  \
+    Class(const Class&) = default;                  \
+    Class& operator=(const Class&) = default;
+    
+#define DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(Class)  \
+    Class(const Class&) = delete;                   \
+    Class& operator=(const Class&) = delete;        \
+    Class(Class&&) = default;                       \
+    Class& operator=(Class&&) = default;
+
+#define DECLARE_CONSTRUCTORS_MOVE_DELETED(Class)    \
+    Class(const Class&) = delete;                   \
+    Class& operator=(const Class&) = delete;        \
+    Class(Class&&) = delete;                        \
+    Class& operator=(Class&&) = delete;
+
+
 /* https://stackoverflow.com/questions/58808030/range-view-to-stdvector */
 #if __cplusplus < __cpp_lib_ranges_to_container
 namespace std

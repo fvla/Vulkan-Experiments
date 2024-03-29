@@ -67,10 +67,7 @@ public:
     {
         buffer_.bindMemory(*bufferMemory_, 0);
     }
-    VulkanBuffer(const VulkanBuffer&) = delete;
-    VulkanBuffer& operator=(const VulkanBuffer&) = delete;
-    VulkanBuffer(VulkanBuffer&&) = default;
-    VulkanBuffer& operator=(VulkanBuffer&&) = default;
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanBuffer);
 
     const vk::Buffer& get() const noexcept { return *buffer_; }
     constexpr vk::DeviceSize size() const { return bufferSize_; }
