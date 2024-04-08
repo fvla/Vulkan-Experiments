@@ -67,7 +67,7 @@ public:
     {
         buffer_.bindMemory(*bufferMemory_, 0);
     }
-    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanBuffer);
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanBuffer)
 
     const vk::Buffer& get() const noexcept { return *buffer_; }
     constexpr vk::DeviceSize size() const { return bufferSize_; }

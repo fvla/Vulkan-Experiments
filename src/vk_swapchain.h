@@ -29,7 +29,7 @@ public:
             swapchainImageViews_.push_back(device.device.createImageView(imageViewInfo));
         }
     }
-    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanSwapchain);
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanSwapchain)
 
     uint32_t acquireNextImage(const vk::Semaphore& semaphore) const
     {

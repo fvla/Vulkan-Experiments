@@ -93,7 +93,7 @@ public:
                 physicalDevice, deviceInfo, generalQueueIndex, transferQueueIndex));
         }
     }
-    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanInstance);
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanInstance)
 
     const vk::raii::Instance& getInstance() const noexcept { return instance_; }
     gsl::span<const std::shared_ptr<const VulkanDevice>> getDevices() const noexcept { return devices_; }

@@ -16,7 +16,7 @@ class VulkanEngine
     gsl::not_null<std::shared_ptr<const VulkanDevice>> device;
 public:
     VulkanEngine();
-    DECLARE_CONSTRUCTORS_MOVE_DELETED(VulkanEngine);
+    DECLARE_CONSTRUCTORS_MOVE_DELETED(VulkanEngine)
 
     void run();
 };

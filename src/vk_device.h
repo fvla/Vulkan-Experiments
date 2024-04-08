@@ -20,7 +20,7 @@ struct VulkanDevice
         generalQueue(getQueue_(generalQueueIndex)),
         transferQueue(getQueue_(transferQueueIndex))
     {}
-    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanDevice);
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanDevice)
 private:
     std::optional<VulkanQueueInfo>
     getQueue_(std::optional<uint32_t> queueFamilyIndex)

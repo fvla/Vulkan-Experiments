@@ -45,7 +45,7 @@ class VulkanStream
 public:
     VulkanStream(const vk::Device& device, std::shared_ptr<VulkanCommandPool> commandPool)
         : commandPool_(commandPool), semaphore_(device) {}
-    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanStream);
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanStream)
 
     virtual ~VulkanStream()
     {
@@ -90,7 +90,7 @@ private:
 public:
     VulkanGraphicsStream(const vk::Device& device, std::shared_ptr<VulkanCommandPool> commandPool)
         : VulkanStream(device, commandPool), acquireSemaphore_(device), presentSemaphore_(device) {}
-    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanGraphicsStream);
+    DECLARE_CONSTRUCTORS_MOVE_DEFAULTED(VulkanGraphicsStream)
 
     using VulkanStream::submitWork;
 
